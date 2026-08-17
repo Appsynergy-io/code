@@ -9,6 +9,8 @@ import { Box, render, Text } from '../ink.js';
 import { logForDebugging } from '../utils/debug.js';
 import { env } from '../utils/env.js';
 import { errorMessage } from '../utils/errors.js';
+import { displayName, cliName } from '../product/identity.js';
+import { getBinaryName } from '../utils/nativeInstaller/artifact.js';
 import { checkInstall, cleanupNpmInstallations, cleanupShellAliases, installLatest } from '../utils/nativeInstaller/index.js';
 import { getInitialSettings, updateSettingsForSource } from '../utils/settings/settings.js';
 interface InstallProps {
@@ -44,11 +46,11 @@ function getInstallationPath(): string {
   const homeDir = homedir();
   if (isWindows) {
     // Convert to Windows-style path
-    const windowsPath = join(homeDir, '.local', 'bin', 'claude.exe');
+    const windowsPath = join(homeDir, '.local', 'bin', getBinaryName('win32'));
     // Replace forward slashes with backslashes for Windows display
     return windowsPath.replace(/\//g, '\\');
   }
-  return '~/.local/bin/claude';
+  return `~/.local/bin/${cliName}`;
 }
 function SetupNotes(t0) {
   const $ = _c(5);
@@ -113,7 +115,7 @@ function Install({
 
         // Check specifically for lock failure
         if (result.lockFailed) {
-          throw new Error('Could not install - another process is currently installing Claude. Please try again in a moment.');
+          throw new Error(`Could not install - another process is currently installing ${displayName}. Please try again in a moment.`);
         }
 
         // If we couldn't get the version, there might be an issue
@@ -210,12 +212,12 @@ function Install({
   useEffect(() => {
     if (state.type === 'success') {
       // Give success message time to render before exiting
-      setTimeout(onDone, 2000, 'Claude Code installation completed successfully', {
+      setTimeout(onDone, 2000, `${displayName} installation completed successfully`, {
         display: 'system' as const
       });
     } else if (state.type === 'error') {
       // Give error message time to render before exiting
-      setTimeout(onDone, 3000, 'Claude Code installation failed', {
+      setTimeout(onDone, 3000, `${displayName} installation failed`, {
         display: 'system' as const
       });
     }
@@ -226,7 +228,7 @@ function Install({
       {state.type === 'cleaning-npm' && <Text color="warning">Cleaning up old npm installations...</Text>}
 
       {state.type === 'installing' && <Text color="claude">
-          Installing Claude Code native build {state.version}...
+          Installing {displayName} native build {state.version}...
         </Text>}
 
       {state.type === 'setting-up' && <Text color="claude">Setting up launcher and shell integration...</Text>}
@@ -237,7 +239,7 @@ function Install({
           <Box>
             <StatusIcon status="success" withSpace />
             <Text color="success" bold>
-              Claude Code successfully installed!
+              {displayName} successfully installed!
             </Text>
           </Box>
           <Box marginLeft={2} flexDirection="column" gap={1}>
@@ -254,7 +256,7 @@ function Install({
             <Box marginTop={1}>
               <Text dimColor>Next: Run </Text>
               <Text color="claude" bold>
-                claude --help
+                {cliName} --help
               </Text>
               <Text dimColor> to get started</Text>
             </Box>
@@ -279,7 +281,7 @@ function Install({
 export const install = {
   type: 'local-jsx' as const,
   name: 'install',
-  description: 'Install Claude Code native build',
+  description: `Install ${displayName} native build`,
   argumentHint: '[options]',
   async call(onDone: (result: string, options?: {
     display?: CommandResultDisplay;

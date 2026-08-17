@@ -28,6 +28,7 @@ import { cleanupStaleLocks, getAllLockInfo, isPidBasedLockingEnabled, type LockI
 import { getInitialSettings } from '../utils/settings/settings.js';
 import { BASH_MAX_OUTPUT_DEFAULT, BASH_MAX_OUTPUT_UPPER_LIMIT } from '../utils/shell/outputLimits.js';
 import { TASK_MAX_OUTPUT_DEFAULT, TASK_MAX_OUTPUT_UPPER_LIMIT } from '../utils/task/outputFormatting.js';
+import { displayName } from '../product/identity.js';
 import { getXDGStateHome } from '../utils/xdg.js';
 type Props = {
   onDone: (result?: string, options?: {
@@ -222,7 +223,7 @@ export function Doctor(t0) {
   let t7;
   if ($[11] !== onDone) {
     t7 = () => {
-      onDone("Claude Code diagnostics dismissed", {
+      onDone(`${displayName} diagnostics dismissed`, {
         display: "system"
       });
     };
