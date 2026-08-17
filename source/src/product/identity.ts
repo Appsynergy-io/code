@@ -42,6 +42,7 @@ export type Macro = {
   ISSUES_EXPLAINER: string
   VERSION_CHANGELOG: string
   README_URL: string
+  DISPLAY_NAME: string
 }
 
 const require = createRequire(import.meta.url)
@@ -87,6 +88,7 @@ export function buildMacro(
     ISSUES_EXPLAINER: issuesExplainer,
     VERSION_CHANGELOG: overrides?.VERSION_CHANGELOG ?? '',
     README_URL: docsUrl,
+    DISPLAY_NAME: displayName,
   }
 }
 

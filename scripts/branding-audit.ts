@@ -1,7 +1,4 @@
-/**
- * Stub: later PRs scan for leftover user-visible "Claude Code" /
- * anthropics/claude-code update URLs and fill this report.
- */
+// Empty until the branding scanner lands.
 export type BrandingAudit = {
   changed: string[]
   preserved: string[]
