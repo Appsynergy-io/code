@@ -7,6 +7,7 @@ import { binaryRepoUrl } from '../product/identity.ts'
 import {
   binaryArtifactUrl,
   getBinaryName,
+  manifestUrl,
 } from './nativeInstaller/artifact.ts'
 
 const ROOT = join(import.meta.dir, '../../..')
@@ -54,8 +55,11 @@ test('artifact selection is per platform', () => {
   const pack = readFileSync(join(ROOT, 'build/package.sh'), 'utf8')
   for (const platform of PLATFORMS) {
     expect(pack).toContain(platform)
+    expect(manifestUrl(binaryRepoUrl, pkg.version)).toBe(
+      `${binaryRepoUrl}/${pkg.version}-manifest.json`,
+    )
     expect(binaryArtifactUrl(binaryRepoUrl, pkg.version, platform)).toBe(
-      `${binaryRepoUrl}/${pkg.version}/${platform}-${getBinaryName(platform)}`,
+      `${binaryRepoUrl}/${pkg.version}-${platform}-${getBinaryName(platform)}`,
     )
     expect(
       binaryArtifactUrl(binaryRepoUrl, pkg.version, platform),
