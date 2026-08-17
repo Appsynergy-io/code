@@ -55,7 +55,7 @@ test('artifact selection is per platform', () => {
   for (const platform of PLATFORMS) {
     expect(pack).toContain(platform)
     expect(binaryArtifactUrl(binaryRepoUrl, pkg.version, platform)).toBe(
-      `${binaryRepoUrl}/${pkg.version}/${platform}/${getBinaryName(platform)}`,
+      `${binaryRepoUrl}/${pkg.version}/${platform}-${getBinaryName(platform)}`,
     )
     expect(
       binaryArtifactUrl(binaryRepoUrl, pkg.version, platform),

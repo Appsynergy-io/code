@@ -9,8 +9,8 @@
  *
  * GitHub Releases map that path onto tags:
  *   release-index                       assets: latest | stable | nightly
- *   release-index/{version}             assets: manifest.json, checksums.txt
- *   release-index/{version}/{platform}  assets: claude | claude.exe
+ *   release-index/{version}             assets: manifest.json, checksums.txt,
+ *                                     linux-x64-claude, win32-x64-claude.exe, …
  *
  * Usage:
  *   bun release/publish-index.ts --version 2.1.88 --artifacts ./dist
@@ -337,25 +337,19 @@ async function main(): Promise<void> {
     process.stdout.write(`  ${base}/${version}/manifest.json\n`)
     process.stdout.write(`  ${base}/${version}/checksums.txt\n`)
 
+    // One tag per version. Platform files are flattened assets — GitHub 500s
+    // on tags like release-index/{version}/{platform}.
     for (const entry of platforms) {
-      const platformTag = `${indexTag}/${version}/${entry.platform}`
-      const platformRelease = await ensureRelease(
-        owner,
-        repo,
-        platformTag,
-        `${version} ${entry.platform}`,
-      )
+      const assetName = `${entry.platform}-${entry.binaryName}`
       await uploadAsset(
         owner,
         repo,
-        platformRelease,
-        entry.binaryName,
+        versionRelease,
+        assetName,
         await readFile(entry.filePath),
         'application/octet-stream',
       )
-      process.stdout.write(
-        `  ${base}/${version}/${entry.platform}/${entry.binaryName}\n`,
-      )
+      process.stdout.write(`  ${base}/${version}/${assetName}\n`)
     }
   }
 
