@@ -562,7 +562,7 @@ export async function processResumedConversation(
       ...(restoredAttribution && { attribution: restoredAttribution }),
       ...(standaloneAgentContext && { standaloneAgentContext }),
       agentDefinitions: refreshedAgentDefs,
-      tasks: { ...context.initialState.tasks, ...hydratedTasks },
+      tasks: hydratedTasks,
     },
   }
 }

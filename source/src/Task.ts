@@ -49,6 +49,8 @@ export type DurableTaskRecord = {
   // Identity fields from TaskStateBase — needed to rehydrate on resume.
   type?: TaskType
   description?: string
+  /** Remote CCR session id — persisted so reconnect is possible. */
+  sessionId?: string
 }
 
 export type DurableTaskStateFile = {

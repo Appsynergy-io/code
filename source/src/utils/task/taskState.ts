@@ -59,6 +59,7 @@ const DurableTaskRecordSchema = lazySchema(() =>
       completion: z.unknown().optional(),
       type: z.enum(TASK_TYPES).optional(),
       description: z.string().optional(),
+      sessionId: z.string().optional(),
     })
     .strip(),
 )
@@ -155,6 +156,39 @@ function inputString(value: unknown): string {
   return typeof value === 'string' ? value : ''
 }
 
+/** Stubs have no process — only terminal statuses survive rehydrate. */
+function statusForStub(recorded: TaskStatus): TaskStatus {
+  if (
+    recorded === 'completed' ||
+    recorded === 'failed' ||
+    recorded === 'killed'
+  ) {
+    return recorded
+  }
+  return 'killed'
+}
+
+function disposeSessionTasks(tasks: Record<string, TaskState>): void {
+  for (const task of Object.values(tasks)) {
+    try {
+      if ('abortController' in task) {
+        task.abortController?.abort()
+      }
+      if ('currentWorkAbortController' in task) {
+        task.currentWorkAbortController?.abort()
+      }
+      if ('unregisterCleanup' in task) {
+        task.unregisterCleanup?.()
+      }
+      if ('shellCommand' in task) {
+        task.shellCommand?.kill()
+      }
+    } catch (e) {
+      logForDebugging(`disposeSessionTasks ${task.id}: ${String(e)}`)
+    }
+  }
+}
+
 export function snapshotTask(task: TaskState): DurableTaskRecord {
   const record: DurableTaskRecord = {
     id: task.id,
@@ -189,6 +223,7 @@ export function snapshotTask(task: TaskState): DurableTaskRecord {
       record.outputs = task.result
       break
     case 'remote_agent':
+      record.sessionId = task.sessionId
       record.inputs = task.command
       record.outputs = task.title
       break
@@ -274,9 +309,15 @@ export function rehydrateTask(record: DurableTaskRecord): TaskState | null {
     type,
     record.description ?? record.id,
   )
-  base.status = record.status
+  // Stubs have no worker. restoreRemoteAgentTasks reconnects remotes from
+  // their own metadata — leaving them running here would create zombies.
+  base.status = statusForStub(record.status)
   const endTime = completionEndTime(record.completion)
-  if (endTime !== undefined) base.endTime = endTime
+  if (endTime !== undefined) {
+    base.endTime = endTime
+  } else if (base.status === 'killed' && !isTerminalTaskStatus(record.status)) {
+    base.endTime = Date.now()
+  }
   base.notified = false
 
   const pending = asStringList(record.pending)
@@ -330,8 +371,8 @@ export function rehydrateTask(record: DurableTaskRecord): TaskState | null {
         error,
         result: record.outputs as InProcessTeammateTaskState['result'],
         pendingUserMessages: pending,
-        isIdle: record.status !== 'running',
-        shutdownRequested: isTerminalTaskStatus(record.status),
+        isIdle: true,
+        shutdownRequested: true,
         lastReportedToolCount: 0,
         lastReportedTokenCount: 0,
       }
@@ -340,7 +381,7 @@ export function rehydrateTask(record: DurableTaskRecord): TaskState | null {
         ...base,
         type: 'remote_agent',
         remoteTaskType: 'remote-agent',
-        sessionId: record.assignee ?? record.id,
+        sessionId: record.sessionId ?? '',
         command: input,
         title:
           typeof record.outputs === 'string'
@@ -377,7 +418,7 @@ export function hydrateTasksFromDurable(
   return tasks
 }
 
-/** Resume apply: read sidecar (prefer resumed transcript path) into AppState.tasks. */
+/** Resume apply: replace AppState.tasks with the sidecar (never merge sessions). */
 export function applyResumedTaskState(
   setAppState: (f: (prev: AppState) => AppState) => void,
   transcriptPath?: string,
@@ -386,11 +427,10 @@ export function applyResumedTaskState(
     ? readTaskStateFileSync(transcriptPath)
     : lastLoaded
   const tasks = hydrateTasksFromDurable(file)
-  if (Object.keys(tasks).length === 0) return tasks
-  setAppState(prev => ({
-    ...prev,
-    tasks: { ...prev.tasks, ...tasks },
-  }))
+  setAppState(prev => {
+    disposeSessionTasks(prev.tasks)
+    return { ...prev, tasks }
+  })
   return tasks
 }
 
