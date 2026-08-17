@@ -28,7 +28,7 @@ import { cleanupStaleLocks, getAllLockInfo, isPidBasedLockingEnabled, type LockI
 import { getInitialSettings } from '../utils/settings/settings.js';
 import { BASH_MAX_OUTPUT_DEFAULT, BASH_MAX_OUTPUT_UPPER_LIMIT } from '../utils/shell/outputLimits.js';
 import { TASK_MAX_OUTPUT_DEFAULT, TASK_MAX_OUTPUT_UPPER_LIMIT } from '../utils/task/outputFormatting.js';
-import { displayName } from '../product/identity.js';
+import { displayName, projectSettingsDir, xdgDirName } from '../product/identity.js';
 import { getXDGStateHome } from '../utils/xdg.js';
 type Props = {
   onDone: (result?: string, options?: {
@@ -167,7 +167,7 @@ export function Doctor(t0) {
       getDoctorDiagnostic().then(setDiagnostic);
       (async () => {
         const userAgentsDir = join(getClaudeConfigHomeDir(), "agents");
-        const projectAgentsDir = join(getOriginalCwd(), ".claude", "agents");
+        const projectAgentsDir = join(getOriginalCwd(), projectSettingsDir, "agents");
         const {
           activeAgents,
           allAgents,
@@ -190,7 +190,7 @@ export function Doctor(t0) {
         }, async () => toolPermissionContext);
         setContextWarnings(warnings);
         if (isPidBasedLockingEnabled()) {
-          const locksDir = join(getXDGStateHome(), "claude", "locks");
+          const locksDir = join(getXDGStateHome(), xdgDirName, "locks");
           const staleLocksCleaned = cleanupStaleLocks(locksDir);
           const locks = getAllLockInfo(locksDir);
           setVersionLockInfo({

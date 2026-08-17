@@ -35,7 +35,7 @@ fi
 
 DOWNLOAD_BASE_URL="https://github.com/Appsynergy-io/code/releases/download/release-index"
 CLI_NAME=code
-DOWNLOAD_DIR="$HOME/.claude/downloads"
+DOWNLOAD_DIR="$HOME/.code/downloads"
 
 # Check for required dependencies
 DOWNLOADER=""

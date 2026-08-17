@@ -8,6 +8,7 @@ import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
 } from 'src/services/analytics/index.js'
+import { projectSettingsDir } from '../product/identity.js'
 import { getProjectRoot } from '../bootstrap/state.js'
 import { logForDebugging } from './debug.js'
 import { getClaudeConfigHomeDir, isEnvTruthy } from './envUtils.js'
@@ -250,7 +251,7 @@ export function getProjectDirsUpToHome(
       break
     }
 
-    const claudeSubdir = join(current, '.claude', subdir)
+    const claudeSubdir = join(current, projectSettingsDir, subdir)
     // Filter to existing dirs. This is a perf filter (avoids spawning
     // ripgrep on non-existent dirs downstream) and the worktree fallback
     // in loadMarkdownFilesForSubdir relies on it. statSync + explicit error
@@ -301,7 +302,7 @@ export const loadMarkdownFilesForSubdir = memoize(
   ): Promise<MarkdownFile[]> {
     const searchStartTime = Date.now()
     const userDir = join(getClaudeConfigHomeDir(), subdir)
-    const managedDir = join(getManagedFilePath(), '.claude', subdir)
+    const managedDir = join(getManagedFilePath(), projectSettingsDir, subdir)
     const projectDirs = getProjectDirsUpToHome(subdir, cwd)
 
     // For git worktrees where the worktree does NOT have .claude/<subdir> checked
@@ -321,13 +322,13 @@ export const loadMarkdownFilesForSubdir = memoize(
     const canonicalRoot = findCanonicalGitRoot(cwd)
     if (gitRoot && canonicalRoot && canonicalRoot !== gitRoot) {
       const worktreeSubdir = normalizePathForComparison(
-        join(gitRoot, '.claude', subdir),
+        join(gitRoot, projectSettingsDir, subdir),
       )
       const worktreeHasSubdir = projectDirs.some(
         dir => normalizePathForComparison(dir) === worktreeSubdir,
       )
       if (!worktreeHasSubdir) {
-        const mainClaudeSubdir = join(canonicalRoot, '.claude', subdir)
+        const mainClaudeSubdir = join(canonicalRoot, projectSettingsDir, subdir)
         if (!projectDirs.includes(mainClaudeSubdir)) {
           projectDirs.push(mainClaudeSubdir)
         }

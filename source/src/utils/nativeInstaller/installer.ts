@@ -41,7 +41,7 @@ import { logForDebugging } from '../debug.js'
 import { getCurrentInstallationType } from '../doctorDiagnostic.js'
 import { env } from '../env.js'
 import { envDynamic } from '../envDynamic.js'
-import { isEnvTruthy } from '../envUtils.js'
+import { getClaudeConfigHomeDir, isEnvTruthy } from '../envUtils.js'
 import { errorMessage, getErrnoCode, isENOENT, toError } from '../errors.js'
 import { execFileNoThrowWithCwd } from '../execFileNoThrow.js'
 import { getShellType } from '../localInstaller.js'
@@ -61,6 +61,7 @@ import {
   getXDGDataHome,
   getXDGStateHome,
 } from '../xdg.js'
+import { cliName, xdgDirName } from '../../product/identity.js'
 import { getBinaryName } from './artifact.js'
 import { downloadVersion, getLatestVersion } from './download.js'
 
@@ -117,13 +118,13 @@ function getBaseDirectories() {
 
   return {
     // Data directories (permanent storage)
-    versions: join(getXDGDataHome(), 'claude', 'versions'),
+    versions: join(getXDGDataHome(), xdgDirName, 'versions'),
 
     // Cache directories (can be deleted)
-    staging: join(getXDGCacheHome(), 'claude', 'staging'),
+    staging: join(getXDGCacheHome(), xdgDirName, 'staging'),
 
     // State directories
-    locks: join(getXDGStateHome(), 'claude', 'locks'),
+    locks: join(getXDGStateHome(), xdgDirName, 'locks'),
 
     // User bin
     executable: join(getUserBinDir(), executableName),
@@ -1501,11 +1502,11 @@ export async function cleanupShellAliases(): Promise<SetupMessage[]> {
       if (hadAlias) {
         await writeFileLines(configFile, filtered)
         messages.push({
-          message: `Removed claude alias from ${configFile}. Run: unalias claude`,
+          message: `Removed ${cliName} alias from ${configFile}. Run: unalias ${cliName}`,
           userActionRequired: true,
           type: 'alias',
         })
-        logForDebugging(`Cleaned up claude alias from ${shellType} config`)
+        logForDebugging(`Cleaned up ${cliName} alias from ${shellType} config`)
       }
     } catch (error) {
       logError(error)
@@ -1555,10 +1556,10 @@ async function manualRemoveNpmPackage(
     }
 
     if (getPlatform().startsWith('win32')) {
-      // Windows - only remove executables, not the package directory
-      const binCmd = join(globalPrefix, 'claude.cmd')
-      const binPs1 = join(globalPrefix, 'claude.ps1')
-      const binExe = join(globalPrefix, 'claude')
+      // Windows - only remove our executables, not official Claude's
+      const binCmd = join(globalPrefix, `${cliName}.cmd`)
+      const binPs1 = join(globalPrefix, `${cliName}.ps1`)
+      const binExe = join(globalPrefix, cliName)
 
       if (await tryRemove(binCmd, 'bin script')) {
         manuallyRemoved = true
@@ -1572,8 +1573,8 @@ async function manualRemoveNpmPackage(
         manuallyRemoved = true
       }
     } else {
-      // Unix/Mac - only remove symlink, not the package directory
-      const binSymlink = join(globalPrefix, 'bin', 'claude')
+      // Unix/Mac - only remove our symlink, not official Claude's
+      const binSymlink = join(globalPrefix, 'bin', cliName)
 
       if (await tryRemove(binSymlink, 'bin symlink')) {
         manuallyRemoved = true
@@ -1672,8 +1673,8 @@ export async function cleanupNpmInstallations(): Promise<{
     }
   }
 
-  // Check for local installation at ~/.claude/local
-  const localInstallDir = join(homedir(), '.claude', 'local')
+  // Our leftover local install only. Never rm ~/.claude/local (official Claude).
+  const localInstallDir = join(getClaudeConfigHomeDir(), 'local')
 
   try {
     await rm(localInstallDir, { recursive: true })

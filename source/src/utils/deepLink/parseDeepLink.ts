@@ -1,16 +1,16 @@
 /**
  * Deep Link URI Parser
  *
- * Parses `claude-cli://open` URIs. All parameters are optional:
+ * Parses `code://open` URIs. All parameters are optional:
  *   q    — pre-fill the prompt input (not submitted)
  *   cwd  — working directory (absolute path)
  *   repo — owner/name slug, resolved against githubRepoPaths config
  *
  * Examples:
- *   claude-cli://open
- *   claude-cli://open?q=hello+world
- *   claude-cli://open?q=fix+tests&repo=owner/repo
- *   claude-cli://open?cwd=/path/to/project
+ *   code://open
+ *   code://open?q=hello+world
+ *   code://open?q=fix+tests&repo=owner/repo
+ *   code://open?cwd=/path/to/project
  *
  * Security: values are URL-decoded, Unicode-sanitized, and rejected if they
  * contain ASCII control characters (newlines etc. can act as command
@@ -18,9 +18,10 @@
  * use (terminalLauncher.ts) — that escaping is the injection boundary.
  */
 
+import { protocolScheme } from '../../product/identity.js'
 import { partiallySanitizeUnicode } from '../sanitization.js'
 
-export const DEEP_LINK_PROTOCOL = 'claude-cli'
+export const DEEP_LINK_PROTOCOL = protocolScheme
 
 export type DeepLinkAction = {
   query?: string

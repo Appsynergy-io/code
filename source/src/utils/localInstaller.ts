@@ -20,7 +20,7 @@ function getLocalInstallDir(): string {
   return join(getClaudeConfigHomeDir(), 'local')
 }
 export function getLocalClaudePath(): string {
-  return join(getLocalInstallDir(), 'claude')
+  return join(getLocalInstallDir(), cliName)
 }
 
 /**
@@ -28,7 +28,7 @@ export function getLocalClaudePath(): string {
  */
 export function isRunningFromLocalInstallation(): boolean {
   const execPath = process.argv[1] || ''
-  return execPath.includes('/.claude/local/node_modules/')
+  return execPath.includes(`/${configDirName}/local/node_modules/`)
 }
 
 /**

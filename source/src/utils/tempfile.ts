@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from 'crypto'
 import { tmpdir } from 'os'
 import { join } from 'path'
+import { cliName } from '../product/identity.js'
 
 /**
  * Generate a temporary file path.
@@ -17,7 +18,7 @@ import { join } from 'path'
  * @returns Temp file path
  */
 export function generateTempFilePath(
-  prefix: string = 'claude-prompt',
+  prefix: string = `${cliName}-prompt`,
   extension: string = '.md',
   options?: { contentHash?: string },
 ): string {

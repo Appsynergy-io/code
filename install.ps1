@@ -21,7 +21,7 @@ if (-not [Environment]::Is64BitProcess) {
 
 $DOWNLOAD_BASE_URL = "https://github.com/Appsynergy-io/code/releases/download/release-index"
 $CLI_NAME = "code"
-$DOWNLOAD_DIR = "$env:USERPROFILE\.claude\downloads"
+$DOWNLOAD_DIR = "$env:USERPROFILE\.code\downloads"
 
 # Use native ARM64 binary on ARM64 Windows, x64 otherwise
 if ($env:PROCESSOR_ARCHITECTURE -eq "ARM64") {

@@ -32,6 +32,11 @@ export type ProductConfig = {
   legacyInstructionFileNames: string[]
   configDirName: string
   projectSettingsDir: string
+  xdgDirName: string
+  globalConfigFileName: string
+  protocolScheme: string
+  urlHandlerBundleId: string
+  urlHandlerAppName: string
   release: ProductReleaseConfig
   runtime: ProductRuntimeConfig
 }
@@ -66,6 +71,11 @@ export const instructionLocalFileName = product.instructionLocalFileName
 export const legacyInstructionFileNames = product.legacyInstructionFileNames
 export const configDirName = product.configDirName
 export const projectSettingsDir = product.projectSettingsDir
+export const xdgDirName = product.xdgDirName
+export const globalConfigFileName = product.globalConfigFileName
+export const protocolScheme = product.protocolScheme
+export const urlHandlerBundleId = product.urlHandlerBundleId
+export const urlHandlerAppName = product.urlHandlerAppName
 export const binaryRepoUrl = product.release.binaryRepoUrl
 export const releaseChannels = product.release.channels
 export const releaseMinVersion = product.release.minVersion
@@ -97,7 +107,7 @@ export function buildMacro(
 
 export const productMacro = buildMacro()
 
-/** CODE_* wins when set; CLAUDE_CONFIG_DIR / CLAUDE_CODE_* stay valid. */
+/** CODE_* wins when set; CLAUDE_CODE_* stay valid. Config home is CODE_CONFIG_DIR only. */
 export function codeAliasFor(claudeName: string): string | undefined {
   if (claudeName === 'CLAUDE_CONFIG_DIR') return 'CODE_CONFIG_DIR'
   if (claudeName.startsWith('CLAUDE_CODE_')) {

@@ -12,6 +12,7 @@ import { getRemoteManagedSettingsSyncFromCache } from '../../services/remoteMana
 import { uniq } from '../array.js'
 import { logForDebugging } from '../debug.js'
 import { logForDiagnosticsNoPII } from '../diagLogs.js'
+import { projectSettingsDir } from '../../product/identity.js'
 import { getClaudeConfigHomeDir, isEnvTruthy } from '../envUtils.js'
 import { getErrnoCode, isENOENT } from '../errors.js'
 import { writeFileSyncAndFlush_DEPRECATED } from '../file.js'
@@ -300,9 +301,9 @@ export function getRelativeSettingsFilePathForSource(
 ): string {
   switch (source) {
     case 'projectSettings':
-      return join('.claude', 'settings.json')
+      return join(projectSettingsDir, 'settings.json')
     case 'localSettings':
-      return join('.claude', 'settings.local.json')
+      return join(projectSettingsDir, 'settings.local.json')
   }
 }
 
