@@ -1,0 +1,169 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  BUN_VERSION: '1.3.14'
+
+jobs:
+  lint:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+      - run: bun install --ignore-scripts
+      - run: bash scripts/check.sh lint
+
+  format:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+      - run: bun install --ignore-scripts
+      - run: bash scripts/check.sh format
+
+  typecheck:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+      - run: bun install --ignore-scripts
+      - run: bash scripts/check.sh typecheck
+
+  unit:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+      - run: bun install --ignore-scripts
+      - run: bash scripts/check.sh unit
+
+  integration:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+      - run: bun install --ignore-scripts
+      - run: bash scripts/check.sh integration
+
+  context-management:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+      - run: bun install --ignore-scripts
+      - run: bash scripts/check.sh context-management
+
+  task-recovery:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+      - run: bun install --ignore-scripts
+      - run: bash scripts/check.sh task-recovery
+
+  sub-agent-orchestration:
+    name: sub-agent orchestration
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+      - run: bun install --ignore-scripts
+      - run: bash scripts/check.sh sub-agent
+
+  build:
+    needs:
+      - lint
+      - format
+      - typecheck
+      - unit
+      - integration
+      - context-management
+      - task-recovery
+      - sub-agent-orchestration
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+      - run: bun install --ignore-scripts
+      - run: bash scripts/check.sh build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cli-js
+          path: cli.js
+          if-no-files-found: error
+
+  package:
+    needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [linux, darwin, win32]
+        arch: [x64, arm64]
+    name: package (${{ matrix.os }}-${{ matrix.arch }})
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+      - run: bun install --ignore-scripts
+      - uses: actions/download-artifact@v4
+        with:
+          name: cli-js
+          path: .
+      - run: bash scripts/check.sh package ${{ matrix.os }} ${{ matrix.arch }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: artifact-${{ matrix.os }}-${{ matrix.arch }}
+          path: dist/${{ matrix.os }}-${{ matrix.arch }}/
+          if-no-files-found: error
+
+  artifact-validation:
+    name: artifact validation (${{ matrix.os }}-${{ matrix.arch }})
+    needs: package
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [linux, darwin, win32]
+        arch: [x64, arm64]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+      - run: bun install --ignore-scripts
+      - uses: actions/download-artifact@v4
+        with:
+          name: artifact-${{ matrix.os }}-${{ matrix.arch }}
+          path: dist/${{ matrix.os }}-${{ matrix.arch }}
+      - run: bash scripts/check.sh validate ${{ matrix.os }} ${{ matrix.arch }}

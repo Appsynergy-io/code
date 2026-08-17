@@ -266,7 +266,7 @@ export async function update() {
 
   logForDebugging('update: Checking npm registry for latest version')
   logForDebugging(`update: Package URL: ${MACRO.PACKAGE_URL}`)
-  const npmTag = channel === 'stable' ? 'stable' : 'latest'
+  const npmTag = channel
   const npmCommand = `npm view ${MACRO.PACKAGE_URL}@${npmTag} version`
   logForDebugging(`update: Running: ${npmCommand}`)
   const latestVersion = await getLatestVersion(channel)
@@ -292,13 +292,8 @@ export async function update() {
     process.stderr.write('Try:\n')
     process.stderr.write('  • Check your internet connection\n')
     process.stderr.write('  • Run with --debug flag for more details\n')
-    const packageName =
-      MACRO.PACKAGE_URL ||
-      (process.env.USER_TYPE === 'ant'
-        ? '@anthropic-ai/claude-cli'
-        : '@anthropic-ai/claude-code')
     process.stderr.write(
-      `  • Manually check: npm view ${packageName} version\n`,
+      `  • Manually check: npm view ${MACRO.PACKAGE_URL} version\n`,
     )
 
     process.stderr.write('  • Check if you need to login: npm whoami\n')
@@ -365,7 +360,7 @@ export async function update() {
     status = await installOrUpdateClaudePackage(channel)
   } else {
     logForDebugging('update: Calling installGlobalPackage() for global update')
-    status = await installGlobalPackage()
+    status = await installGlobalPackage(latestVersion)
   }
 
   logForDebugging(`update: Installation status: ${status}`)

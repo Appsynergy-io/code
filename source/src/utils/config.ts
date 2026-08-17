@@ -76,7 +76,7 @@ export interface HistoryEntry {
   pastedContents: Record<number, PastedContent>
 }
 
-export type ReleaseChannel = 'stable' | 'latest'
+export type ReleaseChannel = 'stable' | 'latest' | 'nightly'
 
 export type ProjectConfig = {
   allowedTools: string[]
