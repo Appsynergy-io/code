@@ -21,7 +21,9 @@
   "include": [
     "scripts/**/*.ts",
     "source/src/vendor/bun-bundle.ts",
+    "source/src/vendor/bun-bundle.test.ts",
     "source/src/product/identity.ts",
+    "source/src/product/identity.test.ts",
     "source/src/product/macros.d.ts",
     "config/product.json",
     "package.json"

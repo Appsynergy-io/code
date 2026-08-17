@@ -1,4 +1,5 @@
-import { createRequire } from 'node:module'
+import productJson from '../../../config/product.json'
+import pkgJson from '../../../package.json'
 
 export type ProductReleaseChannel = 'latest' | 'stable' | 'nightly'
 
@@ -45,9 +46,8 @@ export type Macro = {
   DISPLAY_NAME: string
 }
 
-const require = createRequire(import.meta.url)
-const product = require('../../../config/product.json') as ProductConfig
-const pkg = require('../../../package.json') as { version: string }
+const product = productJson as ProductConfig
+const pkg = pkgJson as { version: string }
 
 export const productName = product.productName
 export const cliName = product.cliName

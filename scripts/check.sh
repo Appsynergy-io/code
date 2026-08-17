@@ -24,3 +24,31 @@ if [ "$out" != "$expected" ]; then
   echo "expected version line '$expected', got: $out" >&2
   exit 1
 fi
+
+echo ':: smoke --help'
+bun -e '
+const proc = Bun.spawn(["node", "cli.js", "--help"], { stdout: "pipe", stderr: "pipe" })
+const timer = setTimeout(() => proc.kill(), 45_000)
+const [stdout, stderr, code] = await Promise.all([
+  new Response(proc.stdout).text(),
+  new Response(proc.stderr).text(),
+  proc.exited,
+])
+clearTimeout(timer)
+const text = stdout + stderr
+if (/parseFrontmatter|SKILL_MD is not|markdown\.match/.test(text)) {
+  process.stderr.write(text)
+  process.exit(1)
+}
+if (code !== 0) {
+  process.stderr.write(text)
+  process.stderr.write(`node cli.js --help exited ${code}\\n`)
+  process.exit(1)
+}
+if (!/Usage:/.test(stdout)) {
+  process.stderr.write(text)
+  process.stderr.write("node cli.js --help produced no Usage line\\n")
+  process.exit(1)
+}
+process.stdout.write(stdout.slice(0, 400) + "\\n")
+'

@@ -10,7 +10,12 @@ import { registerSimplifySkill } from './simplify.js'
 import { registerSkillifySkill } from './skillify.js'
 import { registerStuckSkill } from './stuck.js'
 import { registerUpdateConfigSkill } from './updateConfig.js'
-import { registerVerifySkill } from './verify.js'
+/* eslint-disable @typescript-eslint/no-require-imports */
+const registerVerifySkill =
+  "external" === 'ant'
+    ? (require('./verify.js') as typeof import('./verify.js')).registerVerifySkill
+    : () => {}
+/* eslint-enable @typescript-eslint/no-require-imports */
 
 /**
  * Initialize all bundled skills.
