@@ -1,16 +1,16 @@
 /**
  * Deep Link URI Parser
  *
- * Parses `code://open` URIs. All parameters are optional:
+ * Parses `code-cli://open` URIs. All parameters are optional:
  *   q    — pre-fill the prompt input (not submitted)
  *   cwd  — working directory (absolute path)
  *   repo — owner/name slug, resolved against githubRepoPaths config
  *
  * Examples:
- *   code://open
- *   code://open?q=hello+world
- *   code://open?q=fix+tests&repo=owner/repo
- *   code://open?cwd=/path/to/project
+ *   code-cli://open
+ *   code-cli://open?q=hello+world
+ *   code-cli://open?q=fix+tests&repo=owner/repo
+ *   code-cli://open?cwd=/path/to/project
  *
  * Security: values are URL-decoded, Unicode-sanitized, and rejected if they
  * contain ASCII control characters (newlines etc. can act as command

@@ -92,7 +92,7 @@ test('config home and global file names come from product.json', () => {
   expect(globalConfigFileName).toBe(product.globalConfigFileName)
   expect(globalConfigFileName).toBe('.code.json')
   expect(protocolScheme).toBe(product.protocolScheme)
-  expect(protocolScheme).toBe('code')
+  expect(protocolScheme).toBe('code-cli')
   expect(urlHandlerBundleId).toBe(product.urlHandlerBundleId)
   expect(urlHandlerBundleId).toBe('com.appsynergy.code-url-handler')
   expect(urlHandlerAppName).toBe(product.urlHandlerAppName)
