@@ -36,7 +36,7 @@ import { sleep } from '../../utils/sleep.js';
 import { buildEffectiveSystemPrompt } from '../../utils/systemPrompt.js';
 import { asSystemPrompt } from '../../utils/systemPromptType.js';
 import { getTaskOutputPath } from '../../utils/task/diskOutput.js';
-import { getLastLoadedTaskState } from '../../utils/task/taskState.js';
+import { readTaskStateFile } from '../../utils/task/taskState.js';
 import { getParentSessionId, isTeammate } from '../../utils/teammate.js';
 import { isInProcessTeammate } from '../../utils/teammateContext.js';
 import { teleportToRemote } from '../../utils/teleport.js';
@@ -485,11 +485,13 @@ export const AgentTool = buildTool({
       };
     }
 
-    // Soft cap from remaining context; reuse/retry from task-state before spawn.
+    // Soft cap from remaining context; reuse/retry from this session's sidecar.
+    const liveAppState = toolUseContext.getAppState();
+    const currentSidecar = await readTaskStateFile();
     const schedule = getAgentSchedule({
       model: toolUseContext.options.mainLoopModel,
       usedTokens: tokenCountWithEstimation(toolUseContext.messages ?? []),
-      runningLocalAgents: countRunningLocalAgents(appState.tasks)
+      runningLocalAgents: countRunningLocalAgents(liveAppState.tasks)
     });
     logForDebugging(`agentScheduler: running=${schedule.running} cap=${schedule.softCap} remaining=${schedule.remainingContext} reserve=${schedule.perAgentReserve}`);
     const spawnDecision = decideCoordinatorTransition({
@@ -499,8 +501,8 @@ export const AgentTool = buildTool({
       shouldCompact: schedule.remainingContext < schedule.perAgentReserve,
       remainingContext: schedule.remainingContext,
       perAgentReserve: schedule.perAgentReserve,
-      tasks: appState.tasks,
-      durableTasks: getLastLoadedTaskState()?.tasks
+      tasks: liveAppState.tasks,
+      durableTasks: currentSidecar?.tasks ?? []
     });
     logForDebugging(`coordinator spawn: ${spawnDecision.action} (${spawnDecision.reason})`);
     const canReadOutputFile = toolUseContext.options.tools.some(t => toolMatchesName(t, FILE_READ_TOOL_NAME) || toolMatchesName(t, BASH_TOOL_NAME));
@@ -515,22 +517,36 @@ export const AgentTool = buildTool({
         canReadOutputFile
       }
     });
-    if (spawnDecision.action === 'reuse-result' && spawnDecision.result && typeof spawnDecision.result === 'object' && Array.isArray((spawnDecision.result as AgentToolResult).content)) {
-      return {
-        data: {
-          status: 'completed' as const,
-          prompt,
-          ...(spawnDecision.result as AgentToolResult)
+    switch (spawnDecision.action) {
+      case 'reuse-result': {
+        const reused = spawnDecision.result;
+        if (reused && typeof reused === 'object' && Array.isArray((reused as AgentToolResult).content)) {
+          return {
+            data: {
+              status: 'completed' as const,
+              prompt,
+              ...(reused as AgentToolResult)
+            }
+          };
         }
-      };
-    }
-    if ((spawnDecision.action === 'retry' || spawnDecision.action === 'delegate' || spawnDecision.action === 'continue') && spawnDecision.taskId) {
-      if (spawnDecision.action === 'continue') {
-        const existing = appState.tasks[spawnDecision.taskId] ?? Object.values(appState.tasks).find(t => t.type === 'local_agent' && (t.agentId === spawnDecision.taskId || t.id === spawnDecision.taskId));
-        if (existing?.type === 'local_agent' && existing.status === 'running') {
+        throw new Error(`Cannot reuse result for agent ${spawnDecision.taskId ?? 'unknown'}: stored output is missing or invalid.`);
+      }
+      case 'continue': {
+        const latest = toolUseContext.getAppState();
+        const existing = spawnDecision.taskId ? latest.tasks[spawnDecision.taskId] ?? Object.values(latest.tasks).find(t => t.type === 'local_agent' && (t.agentId === spawnDecision.taskId || t.id === spawnDecision.taskId)) : undefined;
+        if (existing?.type === 'local_agent' && (existing.status === 'running' || existing.status === 'pending')) {
           return asAsyncLaunch(existing.agentId ?? existing.id, existing.description || description);
         }
-      } else {
+        throw new Error(`Cannot continue local agent ${spawnDecision.taskId ?? 'unknown'}: it is no longer running.`);
+      }
+      case 'retry':
+      case 'delegate': {
+        if (!spawnDecision.taskId) {
+          if (!schedule.canSpawn) {
+            throw new Error(`Cannot ${spawnDecision.action} local agent: no task id and no spawn capacity.`);
+          }
+          break;
+        }
         try {
           const resumed = await resumeAgentBackground({
             agentId: spawnDecision.taskId,
@@ -545,14 +561,18 @@ export const AgentTool = buildTool({
             throw error;
           }
           logForDebugging(`coordinator ${spawnDecision.action} fell through to spawn: ${errorMessage(error)}`);
+          break;
         }
       }
-    }
-    if (spawnDecision.action === 'compact') {
-      throw new Error(`Cannot spawn another local agent: remaining context ${schedule.remainingContext} is below the per-agent reserve ${schedule.perAgentReserve}. Compact first.`);
-    }
-    if (spawnDecision.action === 'stop') {
-      throw new Error(`Cannot spawn another local agent: ${schedule.running} running, ${schedule.softCap} allowed from remaining context (${schedule.remainingContext} tokens / ${schedule.perAgentReserve} reserve).`);
+      case 'compact':
+        throw new Error(`Cannot spawn another local agent: remaining context ${schedule.remainingContext} is below the per-agent reserve ${schedule.perAgentReserve}. Compact first.`);
+      case 'stop':
+        throw new Error(`Cannot spawn another local agent: ${schedule.running} running, ${schedule.softCap} allowed from remaining context (${schedule.remainingContext} tokens / ${schedule.perAgentReserve} reserve).`);
+      case 'spawn':
+        break;
+      case 'checkpoint':
+      case 'rehydrate':
+        throw new Error(`Unexpected coordinator action for spawn: ${spawnDecision.action}`);
     }
 
     // System prompt + prompt messages: branch on fork path.

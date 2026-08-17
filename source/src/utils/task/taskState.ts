@@ -74,9 +74,21 @@ const DurableTaskStateFileSchema = lazySchema(() =>
 )
 
 let lastLoaded: DurableTaskStateFile | null = null
+let lastLoadedPath: string | null = null
 
-export function getLastLoadedTaskState(): DurableTaskStateFile | null {
+export function getLastLoadedTaskState(
+  transcriptPath?: string,
+): DurableTaskStateFile | null {
+  if (lastLoadedPath !== getTaskStatePath(transcriptPath)) {
+    return null
+  }
   return lastLoaded
+}
+
+/** Drop the process-global sidecar cache. Call on /clear and new-session. */
+export function clearLastLoadedTaskState(): void {
+  lastLoaded = null
+  lastLoadedPath = null
 }
 
 function parseTaskState(raw: string): DurableTaskStateFile | null {
@@ -86,19 +98,26 @@ function parseTaskState(raw: string): DurableTaskStateFile | null {
   return parsed.success ? (parsed.data as DurableTaskStateFile) : null
 }
 
+function rememberLoaded(
+  path: string,
+  loaded: DurableTaskStateFile | null,
+): DurableTaskStateFile | null {
+  lastLoaded = loaded
+  lastLoadedPath = path
+  return loaded
+}
+
 export async function readTaskStateFile(
   transcriptPath?: string,
 ): Promise<DurableTaskStateFile | null> {
   const path = getTaskStatePath(transcriptPath)
   try {
     const raw = await readFile(path, 'utf-8')
-    const loaded = parseTaskState(raw)
-    if (loaded) lastLoaded = loaded
-    return loaded
+    return rememberLoaded(path, parseTaskState(raw))
   } catch (e) {
-    if (isFsInaccessible(e)) return null
+    if (isFsInaccessible(e)) return rememberLoaded(path, null)
     logForDebugging(`readTaskStateFile: ${String(e)}`)
-    return null
+    return rememberLoaded(path, null)
   }
 }
 
@@ -110,13 +129,11 @@ export function readTaskStateFileSync(
   try {
     // eslint-disable-next-line custom-rules/no-sync-fs -- resume must read sidecar before transcript
     const raw = readFileSync(path, 'utf-8')
-    const loaded = parseTaskState(raw)
-    if (loaded) lastLoaded = loaded
-    return loaded
+    return rememberLoaded(path, parseTaskState(raw))
   } catch (e) {
-    if (isFsInaccessible(e)) return null
+    if (isFsInaccessible(e)) return rememberLoaded(path, null)
     logForDebugging(`readTaskStateFileSync: ${String(e)}`)
-    return null
+    return rememberLoaded(path, null)
   }
 }
 
@@ -127,7 +144,7 @@ export async function writeTaskStateFile(
   const path = getTaskStatePath(transcriptPath)
   await mkdir(dirname(path), { recursive: true, mode: 0o700 })
   await writeFile(path, jsonStringify(file), { encoding: 'utf-8', mode: 0o600 })
-  lastLoaded = file
+  rememberLoaded(path, file)
 }
 
 function asStringList(value: unknown): string[] {
@@ -424,13 +441,10 @@ export function applyResumedTaskState(
   setAppState: (f: (prev: AppState) => AppState) => void,
   transcriptPath?: string,
 ): Record<string, TaskState> {
-  const file = transcriptPath
-    ? readTaskStateFileSync(transcriptPath)
-    : lastLoaded
+  const file = readTaskStateFileSync(transcriptPath)
   const decision = decideCoordinatorTransition({
     trigger: 'resume',
     durableTasks: file?.tasks,
-    appStateHydrated: false,
   })
   logForDebugging(
     `coordinator resume: ${decision.action} (${decision.reason})`,
@@ -450,7 +464,6 @@ export function loadHydratedTasks(
   const decision = decideCoordinatorTransition({
     trigger: 'resume',
     durableTasks: file?.tasks,
-    appStateHydrated: false,
   })
   logForDebugging(
     `coordinator resume: ${decision.action} (${decision.reason})`,

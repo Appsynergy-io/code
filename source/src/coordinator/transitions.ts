@@ -25,10 +25,11 @@ export type TransitionTask = {
   inputs?: unknown
   outputs?: unknown
   result?: unknown
-  retries?: number
   description?: string
   assignee?: string
   agentId?: string
+  endTime?: number
+  completion?: unknown
 }
 
 export type CoordinatorTransition = {
@@ -49,7 +50,7 @@ export type CoordinatorTransitionInput = {
   appStateHydrated?: boolean
   /** Live AppState.tasks — coordinator authority. */
   tasks?: Record<string, TransitionTask> | undefined
-  /** Sidecar records. Used when AppState has no match. */
+  /** Current-session sidecar only. Do not pass lastLoaded from another transcript. */
   durableTasks?: readonly TransitionTask[] | readonly DurableTaskRecord[] | null
 }
 
@@ -85,29 +86,6 @@ function taskKey(task: TransitionTask): string {
   return task.agentId ?? task.assignee ?? task.id
 }
 
-function collectLocalAgents(
-  tasks: CoordinatorTransitionInput['tasks'],
-  durableTasks: CoordinatorTransitionInput['durableTasks'],
-): TransitionTask[] {
-  const byId = new Map<string, TransitionTask>()
-  // AppState first — it is authority over the sidecar.
-  for (const task of Object.values(tasks ?? {})) {
-    if (isLocalAgentLike(task)) {
-      byId.set(taskKey(task), task)
-    }
-  }
-  for (const task of durableTasks ?? []) {
-    if (!isLocalAgentLike(task)) {
-      continue
-    }
-    const key = taskKey(task)
-    if (!byId.has(key)) {
-      byId.set(key, task)
-    }
-  }
-  return [...byId.values()]
-}
-
 function matchesPrompt(task: TransitionTask, prompt: string): boolean {
   return taskPrompt(task) === prompt
 }
@@ -119,13 +97,7 @@ function findPromptMatches(
   return agents.filter(task => matchesPrompt(task, prompt))
 }
 
-function pickMatch(matches: TransitionTask[]): TransitionTask | undefined {
-  const running = matches.find(
-    t => t.status === 'running' || t.status === 'pending',
-  )
-  if (running) {
-    return running
-  }
+function pickDurableMatch(matches: TransitionTask[]): TransitionTask | undefined {
   const completed = matches.find(t => t.status === 'completed' && hasResult(t))
   if (completed) {
     return completed
@@ -133,10 +105,38 @@ function pickMatch(matches: TransitionTask[]): TransitionTask | undefined {
   return matches.find(t => t.status === 'failed' || t.status === 'killed')
 }
 
+function taskEndTime(task: TransitionTask): number | undefined {
+  if (typeof task.endTime === 'number') {
+    return task.endTime
+  }
+  const completion = task.completion
+  if (
+    completion !== null &&
+    typeof completion === 'object' &&
+    'endTime' in completion &&
+    typeof (completion as { endTime: unknown }).endTime === 'number'
+  ) {
+    return (completion as { endTime: number }).endTime
+  }
+  return undefined
+}
+
 function mostRecentCompleted(agents: TransitionTask[]): TransitionTask | undefined {
   let best: TransitionTask | undefined
+  let bestTime = -Infinity
+  let sawTimestamp = false
   for (const task of agents) {
-    if (task.status === 'completed' && hasResult(task)) {
+    if (task.status !== 'completed' || !hasResult(task)) {
+      continue
+    }
+    const ended = taskEndTime(task)
+    if (ended !== undefined) {
+      if (!sawTimestamp || ended >= bestTime) {
+        best = task
+        bestTime = ended
+        sawTimestamp = true
+      }
+    } else if (!sawTimestamp) {
       best = task
     }
   }
@@ -155,60 +155,51 @@ function decideCompact(input: CoordinatorTransitionInput): CoordinatorTransition
 
 function decideResume(input: CoordinatorTransitionInput): CoordinatorTransition {
   const durable = input.durableTasks ?? []
-  if (!input.appStateHydrated && durable.length > 0) {
+  if (durable.length > 0) {
     return {
       action: 'rehydrate',
-      reason: 'task-state.json has records; AppState is not yet hydrated',
+      reason: 'task-state.json has records for this session',
     }
   }
-  const agents = collectLocalAgents(input.tasks, durable)
-  const failed = agents.find(t => t.status === 'failed' && (t.retries ?? 0) > 0)
-  if (failed) {
-    return {
-      action: 'retry',
-      reason: 'failed task has remaining retries',
-      taskId: taskKey(failed),
-    }
-  }
-  const liveRunning = Object.values(input.tasks ?? {}).some(
-    t => t.status === 'running',
-  )
-  if (input.appStateHydrated && liveRunning && durable.length === 0) {
-    return {
-      action: 'stop',
-      reason: 'no sidecar; stop live tasks from the previous session',
-    }
-  }
-  return { action: 'continue', reason: 'session tasks already applied' }
+  return { action: 'continue', reason: 'no sidecar records to apply' }
 }
 
 function decideSpawn(input: CoordinatorTransitionInput): CoordinatorTransition {
   const prompt = input.prompt
-  const agents = collectLocalAgents(input.tasks, input.durableTasks)
+  // Live workers: this conversation's AppState only (running/pending).
+  const live = Object.values(input.tasks ?? {}).filter(isLocalAgentLike)
+  // Sidecar: current session file only. Never lastLoaded from another transcript.
+  const durable = [...(input.durableTasks ?? [])].filter(isLocalAgentLike)
 
   if (prompt && prompt.length > 0) {
-    const match = pickMatch(findPromptMatches(agents, prompt))
-    if (match) {
-      if (match.status === 'running' || match.status === 'pending') {
-        return {
-          action: 'continue',
-          reason: 'same prompt already running',
-          taskId: taskKey(match),
-        }
+    const liveMatch = live.find(
+      t =>
+        matchesPrompt(t, prompt) &&
+        (t.status === 'running' || t.status === 'pending'),
+    )
+    if (liveMatch) {
+      return {
+        action: 'continue',
+        reason: 'same prompt already running',
+        taskId: taskKey(liveMatch),
       }
-      if (match.status === 'completed' && hasResult(match)) {
+    }
+
+    const durableMatch = pickDurableMatch(findPromptMatches(durable, prompt))
+    if (durableMatch) {
+      if (durableMatch.status === 'completed' && hasResult(durableMatch)) {
         return {
           action: 'reuse-result',
           reason: 'completed task-state already has this result',
-          taskId: taskKey(match),
-          result: match.result ?? match.outputs,
+          taskId: taskKey(durableMatch),
+          result: durableMatch.result ?? durableMatch.outputs,
         }
       }
-      if (match.status === 'failed' || match.status === 'killed') {
+      if (durableMatch.status === 'failed' || durableMatch.status === 'killed') {
         return {
           action: 'retry',
-          reason: 'retry failed/killed worker from task-state',
-          taskId: taskKey(match),
+          reason: 'retry failed/killed worker from this session sidecar',
+          taskId: taskKey(durableMatch),
         }
       }
     }
@@ -226,7 +217,7 @@ function decideSpawn(input: CoordinatorTransitionInput): CoordinatorTransition {
         reason: 'no spawn slots; compact to reclaim context',
       }
     }
-    const idle = mostRecentCompleted(agents)
+    const idle = mostRecentCompleted(durable)
     if (idle) {
       return {
         action: 'delegate',

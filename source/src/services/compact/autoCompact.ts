@@ -354,14 +354,7 @@ export async function autoCompactIfNeeded(
       notifyCompaction(querySource ?? 'compact', toolUseContext.agentId)
     }
     markPostCompaction()
-    if (
-      decideCoordinatorTransition({
-        trigger: 'compact',
-        compacted: true,
-      }).action === 'checkpoint'
-    ) {
-      await persistTaskStateFromAppState(toolUseContext.getAppState().tasks)
-    }
+    await persistTaskStateFromAppState(toolUseContext.getAppState().tasks)
     return {
       wasCompacted: true,
       compactionResult: sessionMemoryResult,

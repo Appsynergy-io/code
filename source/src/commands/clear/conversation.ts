@@ -98,6 +98,7 @@ export async function clearConversation({
     for (const task of Object.values(getAppState().tasks)) {
       if (shouldKillTask(task)) continue
       if (isLocalAgentTask(task)) {
+        if (task.status !== 'running') continue
         preservedAgentIds.add(task.agentId)
         preservedLocalAgents.push(task)
       } else if (isInProcessTeammateTask(task)) {
@@ -138,6 +139,12 @@ export async function clearConversation({
       // kill+remove foreground tasks, preserve everything else.
       const nextTasks: AppState['tasks'] = {}
       for (const [taskId, task] of Object.entries(prev.tasks)) {
+        // Terminal local_agents must not survive /clear — prompt match
+        // would otherwise reuse another conversation's worker.
+        if (isLocalAgentTask(task) && task.status !== 'running') {
+          void evictTaskOutput(taskId)
+          continue
+        }
         if (!shouldKillTask(task)) {
           nextTasks[taskId] = task
           continue

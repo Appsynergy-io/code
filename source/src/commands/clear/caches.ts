@@ -31,6 +31,7 @@ import { clearRepositoryCaches } from '../../utils/detectRepository.js'
 import { clearResolveGitDirCache } from '../../utils/git/gitFilesystem.js'
 import { clearStoredImagePaths } from '../../utils/imageStore.js'
 import { clearSessionEnvVars } from '../../utils/sessionEnvVars.js'
+import { clearLastLoadedTaskState } from '../../utils/task/taskState.js'
 
 /**
  * Clear all session-related caches.
@@ -125,6 +126,9 @@ export function clearSessionCaches(
   clearTrackedMagicDocs()
   // Clear session environment variables
   clearSessionEnvVars()
+  // Sidecar cache is process-global and keyed only after this PR — drop it
+  // so a new session cannot reuse another conversation's workers.
+  clearLastLoadedTaskState()
   // Clear WebFetch URL cache (up to 50MB of cached page content)
   void import('../../tools/WebFetchTool/utils.js').then(
     ({ clearWebFetchCache }) => clearWebFetchCache(),
