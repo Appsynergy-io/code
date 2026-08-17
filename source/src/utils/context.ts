@@ -1,6 +1,6 @@
 // biome-ignore-all assist/source/organizeImports: ANT-ONLY import markers must not be reordered
 import { CONTEXT_1M_BETA_HEADER } from '../constants/betas.js'
-import { getContextTokensEnvValue } from '../product/identity.js'
+import { getContextWindowOverride } from '../product/identity.js'
 import { getGlobalConfig } from './config.js'
 import { isEnvTruthy } from './envUtils.js'
 import { getCanonicalName } from './model/model.js'
@@ -8,36 +8,18 @@ import {
   getAdvertisedMaxInputTokens,
   getModelCapability,
 } from './model/modelCapabilities.js'
+import {
+  COMPACT_MAX_OUTPUT_TOKENS,
+  getCompactMaxOutputTokensForWindow,
+  MODEL_CONTEXT_WINDOW_DEFAULT,
+  scaleTokensForContextWindow,
+} from './contextWindow.js'
 
-// Model context window size (200k tokens for all models right now)
-export const MODEL_CONTEXT_WINDOW_DEFAULT = 200_000
-
-// Maximum output tokens for compact operations (200k-window reference)
-export const COMPACT_MAX_OUTPUT_TOKENS = 20_000
-
-const CONTEXT_BUFFER_FLOOR = 512
-
-/** Scale a 200k-window reference buffer to the detected window. */
-export function scaleTokensForContextWindow(
-  referenceTokens: number,
-  window: number,
-): number {
-  return Math.max(
-    CONTEXT_BUFFER_FLOOR,
-    Math.round((referenceTokens / MODEL_CONTEXT_WINDOW_DEFAULT) * window),
-  )
-}
-
-/** Compact streaming fallback output cap — same reserve as autocompact. */
-export function getCompactMaxOutputTokensForWindow(
-  window: number,
-  modelMaxOutput: number,
-): number {
-  const reservedCap = Math.min(
-    COMPACT_MAX_OUTPUT_TOKENS,
-    scaleTokensForContextWindow(COMPACT_MAX_OUTPUT_TOKENS, window),
-  )
-  return Math.min(reservedCap, modelMaxOutput)
+export {
+  COMPACT_MAX_OUTPUT_TOKENS,
+  getCompactMaxOutputTokensForWindow,
+  MODEL_CONTEXT_WINDOW_DEFAULT,
+  scaleTokensForContextWindow,
 }
 
 // Default max output tokens
@@ -84,12 +66,10 @@ export function getContextWindowForModel(
   // Env override (CLAUDE_CODE_MAX_CONTEXT_TOKENS / CODE_MAX_CONTEXT_TOKENS)
   // takes precedence over all other resolution, including 1M detection, so
   // local models can set window size and users can cap a 1M-capable endpoint.
-  const overrideRaw = getContextTokensEnvValue()
-  if (overrideRaw) {
-    const override = parseInt(overrideRaw, 10)
-    if (!isNaN(override) && override > 0) {
-      return override
-    }
+  // No hardcoded ceiling — the parsed env value is the window.
+  const override = getContextWindowOverride()
+  if (override !== undefined) {
+    return override
   }
 
   // [1m] suffix — explicit client-side opt-in, respected over all detection

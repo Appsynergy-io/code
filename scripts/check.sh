@@ -30,6 +30,7 @@ TASK_TESTS=(
 SUBAGENT_TESTS=(
   source/src/coordinator/transitions.test.ts
   source/src/utils/agentScheduler.test.ts
+  source/src/tools/AgentTool/AgentTool.test.ts
 )
 
 existing() {

@@ -47,9 +47,9 @@ import {
   getOriginalCwd,
 } from '../bootstrap/state.js'
 import {
-  instructionFileName,
+  getProjectInstructionPaths,
   instructionLocalFileName,
-  legacyInstructionFileNames,
+  isInstructionFileName,
   projectSettingsDir,
 } from '../product/identity.js'
 import { truncateEntrypointContent } from '../memdir/memdir.js'
@@ -93,30 +93,8 @@ const teamMemPaths = feature('TEAMMEM')
 
 let hasLoggedInitialLoad = false
 
-/** Project-level instruction basenames: primary first, then any legacy names. */
-function getProjectInstructionFileNames(): string[] {
-  return [...new Set([instructionFileName, ...legacyInstructionFileNames])]
-}
-
-function getProjectInstructionPaths(dir: string): string[] {
-  const paths: string[] = []
-  for (const name of getProjectInstructionFileNames()) {
-    paths.push(join(dir, name))
-    paths.push(join(dir, projectSettingsDir, name))
-  }
-  return paths
-}
-
 function getProjectRulesDir(dir: string): string {
   return join(dir, projectSettingsDir, 'rules')
-}
-
-function isInstructionFileName(name: string): boolean {
-  return (
-    name === instructionFileName ||
-    name === instructionLocalFileName ||
-    legacyInstructionFileNames.includes(name)
-  )
 }
 
 const MEMORY_INSTRUCTION_PROMPT =

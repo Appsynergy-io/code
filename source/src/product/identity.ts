@@ -1,3 +1,4 @@
+import { join } from 'path'
 import productJson from '../../../config/product.json'
 import pkgJson from '../../../package.json'
 
@@ -115,4 +116,41 @@ export function getAliasedEnv(claudeName: string): string | undefined {
 
 export function getContextTokensEnvValue(): string | undefined {
   return getAliasedEnv(contextTokensEnv)
+}
+
+/** Positive integer from the product context-tokens env (and CODE_ alias). */
+export function parseContextWindowOverride(
+  raw: string | undefined,
+): number | undefined {
+  if (!raw) return undefined
+  const parsed = parseInt(raw, 10)
+  if (Number.isNaN(parsed) || parsed <= 0) return undefined
+  return parsed
+}
+
+export function getContextWindowOverride(): number | undefined {
+  return parseContextWindowOverride(getContextTokensEnvValue())
+}
+
+/** Project-level instruction basenames: primary first, then any legacy names. */
+export function getProjectInstructionFileNames(): string[] {
+  return [...new Set([instructionFileName, ...legacyInstructionFileNames])]
+}
+
+export function isInstructionFileName(name: string): boolean {
+  return (
+    name === instructionFileName ||
+    name === instructionLocalFileName ||
+    legacyInstructionFileNames.includes(name)
+  )
+}
+
+/** `<name>` and `<settingsDir>/<name>` for each project instruction basename. */
+export function getProjectInstructionPaths(dir: string): string[] {
+  const paths: string[] = []
+  for (const name of getProjectInstructionFileNames()) {
+    paths.push(join(dir, name))
+    paths.push(join(dir, projectSettingsDir, name))
+  }
+  return paths
 }

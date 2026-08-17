@@ -1,5 +1,5 @@
 import { maxConcurrentAgents } from '../product/identity.js'
-import { getContextWindowForModel, scaleTokensForContextWindow } from './context.js'
+import { scaleTokensForContextWindow } from './contextWindow.js'
 
 /**
  * 200k-window reference for one local_agent's reserved working set.
@@ -29,6 +29,9 @@ export function countRunningLocalAgents(
 }
 
 export function getPerAgentReserveTokens(model: string): number {
+  /* eslint-disable @typescript-eslint/no-require-imports */
+  const { getContextWindowForModel } = require('./context.js') as typeof import('./context.js')
+  /* eslint-enable @typescript-eslint/no-require-imports */
   return scaleTokensForContextWindow(
     PER_AGENT_RESERVE_TOKENS,
     getContextWindowForModel(model),
@@ -79,6 +82,9 @@ export function getAgentSchedule(input: {
   usedTokens: number
   runningLocalAgents: number
 }): AgentSchedule {
+  /* eslint-disable @typescript-eslint/no-require-imports */
+  const { getContextWindowForModel } = require('./context.js') as typeof import('./context.js')
+  /* eslint-enable @typescript-eslint/no-require-imports */
   const window = getContextWindowForModel(input.model)
   return getAgentScheduleFromParts({
     remainingContext: window - input.usedTokens,
