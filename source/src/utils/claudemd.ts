@@ -1,10 +1,10 @@
 /**
- * Files are loaded in the following order:
+ * Files are loaded in the following order (names from product identity):
  *
- * 1. Managed memory (eg. /etc/claude-code/CLAUDE.md) - Global instructions for all users
- * 2. User memory (~/.claude/CLAUDE.md) - Private global instructions for all projects
- * 3. Project memory (CLAUDE.md, .claude/CLAUDE.md, and .claude/rules/*.md in project roots) - Instructions checked into the codebase
- * 4. Local memory (CLAUDE.local.md in project roots) - Private project-specific instructions
+ * 1. Managed memory (eg. /etc/<productDir>/<instructionFileName>) - Global instructions for all users
+ * 2. User memory (~/<configDirName>/<instructionFileName>) - Private global instructions for all projects
+ * 3. Project memory (<name>, <settingsDir>/<name>, and <settingsDir>/rules/*.md in project roots) - Instructions checked into the codebase
+ * 4. Local memory (<instructionLocalFileName> in project roots) - Private project-specific instructions
  *
  * Files are loaded in reverse order of priority, i.e. the latest files are highest priority
  * with the model paying more attention to them.
@@ -13,7 +13,8 @@
  * - User memory is loaded from the user's home directory
  * - Project and Local files are discovered by traversing from the current directory up to root
  * - Files closer to the current directory have higher priority (loaded later)
- * - CLAUDE.md, .claude/CLAUDE.md, and all .md files in .claude/rules/ are checked in each directory for Project memory
+ * - <instructionFileName>, <settingsDir>/<instructionFileName>, legacy names, and all .md files in <settingsDir>/rules/ are checked in each directory for Project memory
+ * - Empty legacyInstructionFileNames means CLAUDE.md is not loaded
  *
  * Memory @include directive:
  * - Memory files can include other files using @ notation
@@ -45,6 +46,12 @@ import {
   getAdditionalDirectoriesForClaudeMd,
   getOriginalCwd,
 } from '../bootstrap/state.js'
+import {
+  instructionFileName,
+  instructionLocalFileName,
+  legacyInstructionFileNames,
+  projectSettingsDir,
+} from '../product/identity.js'
 import { truncateEntrypointContent } from '../memdir/memdir.js'
 import { getAutoMemEntrypoint, isAutoMemoryEnabled } from '../memdir/paths.js'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../services/analytics/growthbook.js'
@@ -85,6 +92,32 @@ const teamMemPaths = feature('TEAMMEM')
 /* eslint-enable @typescript-eslint/no-require-imports */
 
 let hasLoggedInitialLoad = false
+
+/** Project-level instruction basenames: primary first, then any legacy names. */
+function getProjectInstructionFileNames(): string[] {
+  return [...new Set([instructionFileName, ...legacyInstructionFileNames])]
+}
+
+function getProjectInstructionPaths(dir: string): string[] {
+  const paths: string[] = []
+  for (const name of getProjectInstructionFileNames()) {
+    paths.push(join(dir, name))
+    paths.push(join(dir, projectSettingsDir, name))
+  }
+  return paths
+}
+
+function getProjectRulesDir(dir: string): string {
+  return join(dir, projectSettingsDir, 'rules')
+}
+
+function isInstructionFileName(name: string): boolean {
+  return (
+    name === instructionFileName ||
+    name === instructionLocalFileName ||
+    legacyInstructionFileNames.includes(name)
+  )
+}
 
 const MEMORY_INSTRUCTION_PROMPT =
   'Codebase and user instructions are shown below. Be sure to adhere to these instructions. IMPORTANT: These instructions OVERRIDE any default behavior and you MUST follow them exactly as written.'
@@ -859,11 +892,11 @@ export const getMemoryFiles = memoize(
     // When running from a git worktree nested inside its main repo (e.g.,
     // .claude/worktrees/<name>/ from `claude -w`), the upward walk passes
     // through both the worktree root and the main repo root. Both contain
-    // checked-in files like CLAUDE.md and .claude/rules/*.md, so the same
+    // checked-in files like AGENTS.md and .claude/rules/*.md, so the same
     // content gets loaded twice. Skip Project-type (checked-in) files from
     // directories above the worktree but within the main repo — the worktree
-    // already has its own checkout. CLAUDE.local.md is gitignored so it only
-    // exists in the main repo and is still loaded.
+    // already has its own checkout. The local instruction file is gitignored
+    // so it only exists in the main repo and is still loaded.
     // See: https://github.com/anthropics/claude-code/issues/29599
     const gitRoot = findGitRoot(originalCwd)
     const canonicalRoot = findCanonicalGitRoot(originalCwd)
@@ -883,34 +916,22 @@ export const getMemoryFiles = memoize(
         pathInWorkingPath(dir, canonicalRoot) &&
         !pathInWorkingPath(dir, gitRoot)
 
-      // Try reading CLAUDE.md (Project) - only if projectSettings is enabled
+      // Try reading project instruction files — only if projectSettings is enabled
       if (isSettingSourceEnabled('projectSettings') && !skipProject) {
-        const projectPath = join(dir, 'CLAUDE.md')
-        result.push(
-          ...(await processMemoryFile(
-            projectPath,
-            'Project',
-            processedPaths,
-            includeExternal,
-          )),
-        )
+        for (const projectPath of getProjectInstructionPaths(dir)) {
+          result.push(
+            ...(await processMemoryFile(
+              projectPath,
+              'Project',
+              processedPaths,
+              includeExternal,
+            )),
+          )
+        }
 
-        // Try reading .claude/CLAUDE.md (Project)
-        const dotClaudePath = join(dir, '.claude', 'CLAUDE.md')
-        result.push(
-          ...(await processMemoryFile(
-            dotClaudePath,
-            'Project',
-            processedPaths,
-            includeExternal,
-          )),
-        )
-
-        // Try reading .claude/rules/*.md files (Project)
-        const rulesDir = join(dir, '.claude', 'rules')
         result.push(
           ...(await processMdRules({
-            rulesDir,
+            rulesDir: getProjectRulesDir(dir),
             type: 'Project',
             processedPaths,
             includeExternal,
@@ -919,9 +940,9 @@ export const getMemoryFiles = memoize(
         )
       }
 
-      // Try reading CLAUDE.local.md (Local) - only if localSettings is enabled
+      // Try reading local instruction file — only if localSettings is enabled
       if (isSettingSourceEnabled('localSettings')) {
-        const localPath = join(dir, 'CLAUDE.local.md')
+        const localPath = join(dir, instructionLocalFileName)
         result.push(
           ...(await processMemoryFile(
             localPath,
@@ -933,40 +954,27 @@ export const getMemoryFiles = memoize(
       }
     }
 
-    // Process CLAUDE.md from additional directories (--add-dir) if env var is enabled
+    // Process instruction files from additional directories (--add-dir) if env var is enabled
     // This is controlled by CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD and defaults to off
     // Note: we don't check isSettingSourceEnabled('projectSettings') here because --add-dir
     // is an explicit user action and the SDK defaults settingSources to [] when not specified
     if (isEnvTruthy(process.env.CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD)) {
       const additionalDirs = getAdditionalDirectoriesForClaudeMd()
       for (const dir of additionalDirs) {
-        // Try reading CLAUDE.md from the additional directory
-        const projectPath = join(dir, 'CLAUDE.md')
-        result.push(
-          ...(await processMemoryFile(
-            projectPath,
-            'Project',
-            processedPaths,
-            includeExternal,
-          )),
-        )
+        for (const projectPath of getProjectInstructionPaths(dir)) {
+          result.push(
+            ...(await processMemoryFile(
+              projectPath,
+              'Project',
+              processedPaths,
+              includeExternal,
+            )),
+          )
+        }
 
-        // Try reading .claude/CLAUDE.md from the additional directory
-        const dotClaudePath = join(dir, '.claude', 'CLAUDE.md')
-        result.push(
-          ...(await processMemoryFile(
-            dotClaudePath,
-            'Project',
-            processedPaths,
-            includeExternal,
-          )),
-        )
-
-        // Try reading .claude/rules/*.md files from the additional directory
-        const rulesDir = join(dir, '.claude', 'rules')
         result.push(
           ...(await processMdRules({
-            rulesDir,
+            rulesDir: getProjectRulesDir(dir),
             type: 'Project',
             processedPaths,
             includeExternal,
@@ -1042,7 +1050,7 @@ export const getMemoryFiles = memoize(
     // Fire InstructionsLoaded hook for each instruction file loaded
     // (fire-and-forget, audit/observability only).
     // AutoMem/TeamMem are intentionally excluded — they're a separate
-    // memory system, not "instructions" in the CLAUDE.md/rules sense.
+    // memory system, not "instructions" in the instruction-file/rules sense.
     // Gated on !forceIncludeExternal: the forceIncludeExternal=true variant
     // is only used by getExternalClaudeMdIncludes() for approval checks, not
     // for building context — firing the hook there would double-fire on startup.
@@ -1150,10 +1158,10 @@ export function filterInjectedMemoryFiles(
   return files.filter(f => f.type !== 'AutoMem' && f.type !== 'TeamMem')
 }
 
-export const getClaudeMds = (
+export function getInstructionFiles(
   memoryFiles: MemoryFileInfo[],
   filter?: (type: MemoryType) => boolean,
-): string => {
+): string {
   const memories: string[] = []
   const skipProjectLevel = getFeatureValue_CACHED_MAY_BE_STALE(
     'tengu_paper_halyard',
@@ -1193,6 +1201,9 @@ export const getClaudeMds = (
 
   return `${MEMORY_INSTRUCTION_PROMPT}\n\n${memories.join('\n\n')}`
 }
+
+/** Compatibility wrapper — existing imports keep compiling. */
+export const getClaudeMds = getInstructionFiles
 
 /**
  * Gets managed and user conditional rules that match the target path.
@@ -1239,7 +1250,7 @@ export async function getManagedAndUserConditionalRules(
 
 /**
  * Gets memory files for a single nested directory (between CWD and target).
- * Loads CLAUDE.md, unconditional rules, and conditional rules for that directory.
+ * Loads instruction files, unconditional rules, and conditional rules for that directory.
  *
  * @param dir The directory to process
  * @param targetPath The target file path (for conditional rule matching)
@@ -1253,37 +1264,29 @@ export async function getMemoryFilesForNestedDirectory(
 ): Promise<MemoryFileInfo[]> {
   const result: MemoryFileInfo[] = []
 
-  // Process project memory files (CLAUDE.md and .claude/CLAUDE.md)
+  // Process project memory files (<name> and <settingsDir>/<name>)
   if (isSettingSourceEnabled('projectSettings')) {
-    const projectPath = join(dir, 'CLAUDE.md')
-    result.push(
-      ...(await processMemoryFile(
-        projectPath,
-        'Project',
-        processedPaths,
-        false,
-      )),
-    )
-    const dotClaudePath = join(dir, '.claude', 'CLAUDE.md')
-    result.push(
-      ...(await processMemoryFile(
-        dotClaudePath,
-        'Project',
-        processedPaths,
-        false,
-      )),
-    )
+    for (const projectPath of getProjectInstructionPaths(dir)) {
+      result.push(
+        ...(await processMemoryFile(
+          projectPath,
+          'Project',
+          processedPaths,
+          false,
+        )),
+      )
+    }
   }
 
-  // Process local memory file (CLAUDE.local.md)
+  // Process local memory file
   if (isSettingSourceEnabled('localSettings')) {
-    const localPath = join(dir, 'CLAUDE.local.md')
+    const localPath = join(dir, instructionLocalFileName)
     result.push(
       ...(await processMemoryFile(localPath, 'Local', processedPaths, false)),
     )
   }
 
-  const rulesDir = join(dir, '.claude', 'rules')
+  const rulesDir = getProjectRulesDir(dir)
 
   // Process project unconditional .claude/rules/*.md files, which were not eagerly loaded
   // Use a separate processedPaths set to avoid marking conditional rule files as processed
@@ -1331,7 +1334,7 @@ export async function getConditionalRulesForCwdLevelDirectory(
   targetPath: string,
   processedPaths: Set<string>,
 ): Promise<MemoryFileInfo[]> {
-  const rulesDir = join(dir, '.claude', 'rules')
+  const rulesDir = getProjectRulesDir(dir)
   return processConditionedMdRules(
     targetPath,
     rulesDir,
@@ -1430,26 +1433,26 @@ export async function shouldShowClaudeMdExternalIncludesWarning(): Promise<boole
 }
 
 /**
- * Check if a file path is a memory file (CLAUDE.md, CLAUDE.local.md, or .claude/rules/*.md)
+ * Check if a file path is a memory file (instruction file, local variant, or rules/*.md)
  */
 export function isMemoryFilePath(filePath: string): boolean {
   const name = basename(filePath)
 
-  // CLAUDE.md or CLAUDE.local.md anywhere
-  if (name === 'CLAUDE.md' || name === 'CLAUDE.local.md') {
+  if (isInstructionFileName(name)) {
     return true
   }
 
-  // .md files in .claude/rules/ directories
   if (
     name.endsWith('.md') &&
-    filePath.includes(`${sep}.claude${sep}rules${sep}`)
+    filePath.includes(`${sep}${projectSettingsDir}${sep}rules${sep}`)
   ) {
     return true
   }
 
   return false
 }
+
+export const isMemoryFile = isMemoryFilePath
 
 /**
  * Get all memory file paths from both standard discovery and readFileState.
