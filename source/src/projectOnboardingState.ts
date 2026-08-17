@@ -1,5 +1,6 @@
 import memoize from 'lodash-es/memoize.js'
 import { join } from 'path'
+import { displayName, instructionFileName } from './product/identity.js'
 import {
   getCurrentProjectConfig,
   saveCurrentProjectConfig,
@@ -18,21 +19,21 @@ export type Step = {
 
 export function getSteps(): Step[] {
   const hasClaudeMd = getFsImplementation().existsSync(
-    join(getCwd(), 'CLAUDE.md'),
+    join(getCwd(), instructionFileName),
   )
   const isWorkspaceDirEmpty = isDirEmpty(getCwd())
 
   return [
     {
       key: 'workspace',
-      text: 'Ask Claude to create a new app or clone a repository',
+      text: `Ask ${displayName} to create a new app or clone a repository`,
       isComplete: false,
       isCompletable: true,
       isEnabled: isWorkspaceDirEmpty,
     },
     {
       key: 'claudemd',
-      text: 'Run /init to create a CLAUDE.md file with instructions for Claude',
+      text: `Run /init to create a ${instructionFileName} file with instructions for ${displayName}`,
       isComplete: hasClaudeMd,
       isCompletable: true,
       isEnabled: !isWorkspaceDirEmpty,
