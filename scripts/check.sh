@@ -6,6 +6,7 @@ cd "$ROOT"
 
 DIST="${DIST:-$ROOT/dist}"
 CLI_NAME="$(bun -e 'import product from "./config/product.json"; process.stdout.write(product.cliName)')"
+BINARY_REPO_URL="$(bun -e 'import product from "./config/product.json"; process.stdout.write(product.release.binaryRepoUrl)')"
 
 UNIT_TESTS=(
   scripts/extract-deps.test.ts
@@ -56,6 +57,43 @@ run_tests() {
   bun test "${files[@]}"
 }
 
+assert_native_install() {
+  echo ':: native install'
+  if [[ ! -f install.sh ]]; then
+    echo "missing install.sh" >&2
+    exit 1
+  fi
+  bash -n install.sh
+  if ! grep -qF "$BINARY_REPO_URL" install.sh; then
+    echo "install.sh must contain product.release.binaryRepoUrl" >&2
+    exit 1
+  fi
+  if ! grep -qF "CLI_NAME=${CLI_NAME}" install.sh; then
+    echo "install.sh must set CLI_NAME=${CLI_NAME}" >&2
+    exit 1
+  fi
+  if ! grep -q -- '-manifest.json' install.sh; then
+    echo "install.sh must fetch flattened {version}-manifest.json" >&2
+    exit 1
+  fi
+  if ! grep -qE '\$\{version\}-\$\{platform\}-' install.sh; then
+    echo "install.sh must fetch flattened \${version}-\${platform}- binaries" >&2
+    exit 1
+  fi
+  if grep -qE '/\$version/\$platform/|/\$\{version\}/\$\{platform\}/' install.sh; then
+    echo "install.sh must not use nested /\$version/\$platform/ paths" >&2
+    exit 1
+  fi
+  if ! grep -qF "${BINARY_REPO_URL}/install.sh" README.md; then
+    echo "README must contain the curl install.sh URL" >&2
+    exit 1
+  fi
+  if awk '/^## Get started$/{p=1;next} /^## /{p=0} p && /npm install -g/' README.md | grep -q .; then
+    echo "README Get started must not recommend npm install -g" >&2
+    exit 1
+  fi
+}
+
 stage_lint() {
   echo ':: lint'
   if [[ ! -f scripts/branding-audit.ts ]]; then
@@ -66,6 +104,7 @@ stage_lint() {
     echo "release/branding-audit.json is stale; run: bun scripts/branding-audit.ts --write" >&2
     exit 1
   fi
+  assert_native_install
 }
 
 stage_format() {

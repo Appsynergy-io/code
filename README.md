@@ -31,14 +31,6 @@ node cli.js -p "hello world"   # non-interactive one-shot
 node cli.js                    # interactive REPL
 ```
 
-Or install globally / symlink:
-
-```sh
-npm install -g @appsynergy/code
-# or
-ln -s "$(pwd)/cli.js" /usr/local/bin/code
-```
-
 ## Rebuilding from source
 
 ```sh
@@ -74,13 +66,23 @@ Code is an agentic coding tool that lives in your terminal, understands your cod
 
 ## Get started
 
-1. Install Code:
+macOS / Linux:
 
 ```sh
-npm install -g @appsynergy/code
+curl -fsSL https://github.com/Appsynergy-io/code/releases/download/release-index/install.sh | bash
 ```
 
-2. Navigate to your project directory and run `code`.
+```sh
+curl -fsSL https://github.com/Appsynergy-io/code/releases/download/release-index/install.sh | bash -s stable
+```
+
+Windows PowerShell:
+
+```powershell
+irm https://github.com/Appsynergy-io/code/releases/download/release-index/install.ps1 | iex
+```
+
+Then run `code` from your project directory.
 
 ## Reporting Bugs
 
