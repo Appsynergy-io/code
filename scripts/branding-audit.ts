@@ -60,6 +60,11 @@ const CHANGED = new Set([
   'source/src/components/memory/MemoryFileSelector.tsx',
   'source/src/projectOnboardingState.ts',
   'source/src/main.tsx',
+  'source/src/commands/install.tsx',
+  'source/src/cli/update.ts',
+  'source/src/utils/doctorDiagnostic.ts',
+  'source/src/screens/Doctor.tsx',
+  'source/src/setup.ts',
 ])
 
 const PRESERVED = new Set([

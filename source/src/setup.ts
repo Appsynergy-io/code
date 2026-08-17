@@ -20,6 +20,7 @@ import {
 } from './bootstrap/state.js'
 import { getCommands } from './commands.js'
 import { initSessionMemory } from './services/SessionMemory/sessionMemory.js'
+import { displayName } from './product/identity.js'
 import { asSessionId } from './types/ids.js'
 import { isAgentSwarmsEnabled } from './utils/agentSwarmsEnabled.js'
 import { checkAndRestoreTerminalBackup } from './utils/appleTerminalBackup.js'
@@ -72,7 +73,7 @@ export async function setup(
     // biome-ignore lint/suspicious/noConsole:: intentional console output
     console.error(
       chalk.bold.red(
-        'Error: Claude Code requires Node.js version 18 or higher.',
+        `Error: ${displayName} requires Node.js version 18 or higher.`,
       ),
     )
     process.exit(1)
