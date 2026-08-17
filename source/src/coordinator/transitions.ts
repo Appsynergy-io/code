@@ -164,12 +164,40 @@ function decideResume(input: CoordinatorTransitionInput): CoordinatorTransition 
   return { action: 'continue', reason: 'no sidecar records to apply' }
 }
 
+function sessionTerminals(
+  live: TransitionTask[],
+  durable: TransitionTask[],
+): TransitionTask[] {
+  const byId = new Map<string, TransitionTask>()
+  // Sidecar first; same-session AppState terminals overwrite (authority).
+  for (const task of durable) {
+    if (
+      task.status === 'completed' ||
+      task.status === 'failed' ||
+      task.status === 'killed'
+    ) {
+      byId.set(taskKey(task), task)
+    }
+  }
+  for (const task of live) {
+    if (
+      task.status === 'completed' ||
+      task.status === 'failed' ||
+      task.status === 'killed'
+    ) {
+      byId.set(taskKey(task), task)
+    }
+  }
+  return [...byId.values()]
+}
+
 function decideSpawn(input: CoordinatorTransitionInput): CoordinatorTransition {
   const prompt = input.prompt
-  // Live workers: this conversation's AppState only (running/pending).
+  // This conversation's AppState. /clear already dropped other-session terminals.
   const live = Object.values(input.tasks ?? {}).filter(isLocalAgentLike)
-  // Sidecar: current session file only. Never lastLoaded from another transcript.
+  // Current session file only. Never lastLoaded from another transcript.
   const durable = [...(input.durableTasks ?? [])].filter(isLocalAgentLike)
+  const terminals = sessionTerminals(live, durable)
 
   if (prompt && prompt.length > 0) {
     const liveMatch = live.find(
@@ -185,21 +213,21 @@ function decideSpawn(input: CoordinatorTransitionInput): CoordinatorTransition {
       }
     }
 
-    const durableMatch = pickDurableMatch(findPromptMatches(durable, prompt))
-    if (durableMatch) {
-      if (durableMatch.status === 'completed' && hasResult(durableMatch)) {
+    const terminalMatch = pickDurableMatch(findPromptMatches(terminals, prompt))
+    if (terminalMatch) {
+      if (terminalMatch.status === 'completed' && hasResult(terminalMatch)) {
         return {
           action: 'reuse-result',
-          reason: 'completed task-state already has this result',
-          taskId: taskKey(durableMatch),
-          result: durableMatch.result ?? durableMatch.outputs,
+          reason: 'completed worker in this conversation already has this result',
+          taskId: taskKey(terminalMatch),
+          result: terminalMatch.result ?? terminalMatch.outputs,
         }
       }
-      if (durableMatch.status === 'failed' || durableMatch.status === 'killed') {
+      if (terminalMatch.status === 'failed' || terminalMatch.status === 'killed') {
         return {
           action: 'retry',
-          reason: 'retry failed/killed worker from this session sidecar',
-          taskId: taskKey(durableMatch),
+          reason: 'retry failed/killed worker from this conversation',
+          taskId: taskKey(terminalMatch),
         }
       }
     }
@@ -217,7 +245,7 @@ function decideSpawn(input: CoordinatorTransitionInput): CoordinatorTransition {
         reason: 'no spawn slots; compact to reclaim context',
       }
     }
-    const idle = mostRecentCompleted(durable)
+    const idle = mostRecentCompleted(terminals)
     if (idle) {
       return {
         action: 'delegate',
