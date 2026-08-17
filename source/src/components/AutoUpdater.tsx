@@ -112,7 +112,7 @@ export function AutoUpdater({
         // Use global update for global installations
         logForDebugging('AutoUpdater: Using global update method');
         updateMethod = 'global';
-        installStatus = await installGlobalPackage();
+        installStatus = await installGlobalPackage(latestVersion);
       } else if (installationType === 'native') {
         // This shouldn't happen - native should use NativeAutoUpdater
         logForDebugging('AutoUpdater: Unexpected native installation in non-native updater');
@@ -126,7 +126,7 @@ export function AutoUpdater({
         if (isMigrated) {
           installStatus = await installOrUpdateClaudePackage(channel);
         } else {
-          installStatus = await installGlobalPackage();
+          installStatus = await installGlobalPackage(latestVersion);
         }
       }
       onChangeIsUpdating(false);
