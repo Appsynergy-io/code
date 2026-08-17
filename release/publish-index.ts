@@ -14,6 +14,7 @@
  *   {version}-manifest.json
  *   {version}-checksums.txt
  *   {version}-{platform}-{bin}
+ *   install.sh | install.ps1
  *
  * Usage:
  *   bun release/publish-index.ts --version 2.1.88 --artifacts ./dist
@@ -276,6 +277,25 @@ async function uploadAsset(
   }
 }
 
+async function uploadBootstrapInstallers(
+  owner: string,
+  repo: string,
+  release: { id: number; assets: Array<{ id: number; name: string }> },
+  base: string,
+): Promise<void> {
+  for (const name of ['install.sh', 'install.ps1'] as const) {
+    await uploadAsset(
+      owner,
+      repo,
+      release,
+      name,
+      await readFile(join(root, name)),
+      'text/plain',
+    )
+    process.stdout.write(`  ${base}/${name}\n`)
+  }
+}
+
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2))
   const version =
@@ -365,6 +385,7 @@ async function main(): Promise<void> {
       )
       process.stdout.write(`  ${base}/${channel} → ${version}\n`)
     }
+    await uploadBootstrapInstallers(owner, repo, indexRelease, base)
     return
   }
 
@@ -385,6 +406,7 @@ async function main(): Promise<void> {
     )
     process.stdout.write(`  ${base}/${channel} → ${version}\n`)
   }
+  await uploadBootstrapInstallers(owner, repo, indexRelease, base)
 }
 
 if (import.meta.main) {
