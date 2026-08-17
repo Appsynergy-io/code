@@ -16,7 +16,7 @@
   "projectSettingsDir": ".code",
   "xdgDirName": "code",
   "globalConfigFileName": ".code.json",
-  "protocolScheme": "code",
+  "protocolScheme": "code-cli",
   "urlHandlerBundleId": "com.appsynergy.code-url-handler",
   "urlHandlerAppName": "Code URL Handler",
   "release": {

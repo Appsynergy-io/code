@@ -813,7 +813,7 @@ export const SettingsSchema = lazySchema(() =>
               .enum(['disable'])
               .optional()
               .describe(
-                'Prevent code:// protocol handler registration with the OS',
+                'Prevent code-cli:// protocol handler registration with the OS',
               ),
           }
         : {}),
