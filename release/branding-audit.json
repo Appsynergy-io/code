@@ -438,6 +438,8 @@
     "release/branding-audit.json"
   ],
   "needsReview": [
+    "package.json",
+    "scripts/branding-audit.ts",
     "source/src/bootstrap/state.ts",
     "source/src/bridge/bridgeEnabled.ts",
     "source/src/bridge/bridgeMain.ts",
@@ -526,6 +528,7 @@
     "source/src/keybindings/defaultBindings.ts",
     "source/src/keybindings/reservedShortcuts.ts",
     "source/src/keybindings/schema.ts",
+    "source/src/main.tsx",
     "source/src/memdir/findRelevantMemories.ts",
     "source/src/screens/Doctor.tsx",
     "source/src/screens/REPL.tsx",
@@ -573,6 +576,7 @@
     "source/src/types/ids.ts",
     "source/src/utils/attachments.ts",
     "source/src/utils/attribution.ts",
+    "source/src/utils/autoUpdater.ts",
     "source/src/utils/bash/commands.ts",
     "source/src/utils/bash/ShellSnapshot.ts",
     "source/src/utils/claudeCodeHints.ts",
@@ -580,6 +584,7 @@
     "source/src/utils/claudeInChrome/setup.ts",
     "source/src/utils/completionCache.ts",
     "source/src/utils/computerUse/common.ts",
+    "source/src/utils/config.ts",
     "source/src/utils/deepLink/registerProtocol.ts",
     "source/src/utils/deepLink/terminalLauncher.ts",
     "source/src/utils/editor.ts",

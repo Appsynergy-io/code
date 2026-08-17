@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Named stages so CI jobs can run a subset. Missing tests skip until PR 8.
+# Named stages so CI jobs can run a subset. No-arg runs the full local gate.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
@@ -57,10 +57,13 @@ run_tests() {
 
 stage_lint() {
   echo ':: lint'
-  if [[ -f scripts/branding-audit.ts ]]; then
-    bun scripts/branding-audit.ts >/dev/null
-  else
+  if [[ ! -f scripts/branding-audit.ts ]]; then
     echo 'skip lint (no linter configured)'
+    return 0
+  fi
+  if ! bun scripts/branding-audit.ts --check >/dev/null; then
+    echo "release/branding-audit.json is stale; run: bun scripts/branding-audit.ts --write" >&2
+    exit 1
   fi
 }
 
@@ -235,9 +238,13 @@ run_stage() {
 }
 
 if [[ $# -eq 0 ]]; then
-  # Local/full gate: current PR 2 checks plus package/validate.
+  stage_lint
   stage_typecheck
   stage_unit
+  stage_integration
+  stage_context
+  stage_task
+  stage_subagent
   stage_build
   stage_package
   stage_validate

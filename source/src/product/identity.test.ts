@@ -1,5 +1,6 @@
 import { afterEach, expect, test } from 'bun:test'
 import { join } from 'path'
+import pkg from '../../../package.json'
 import product from '../../../config/product.json'
 import {
   binaryRepoUrl,
@@ -39,7 +40,7 @@ test('buildMacro reads display name Code from product.json', () => {
   const macro = buildMacro()
   expect(displayName).toBe('Code')
   expect(macro.DISPLAY_NAME).toBe('Code')
-  expect(macro.VERSION).toBe('2.1.88')
+  expect(macro.VERSION).toBe(pkg.version)
   expect(macro.PACKAGE_URL).toBe('@appsynergy/code')
 })
 

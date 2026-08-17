@@ -24,8 +24,12 @@ import { lazySchema } from '../lazySchema.js'
 import { getTaskStatePath } from '../sessionStorage.js'
 import { jsonStringify } from '../slowOperations.js'
 import { mergeDurableTasks, statusForStub } from './durableMerge.js'
+import { persistRecords } from './taskPersist.js'
 
 export { mergeDurableTasks, statusForStub } from './durableMerge.js'
+export {
+  persistTaskStateFromAppState as persistTaskStateFromAppStateForTranscript,
+} from './taskPersist.js'
 
 const TASK_STATUSES = [
   'pending',
@@ -256,15 +260,10 @@ export async function persistTaskStateFromAppState(
   transcriptPath?: string,
 ): Promise<void> {
   try {
-    const existing = (await readTaskStateFile(transcriptPath))?.tasks ?? []
+    const path = getTaskStatePath(transcriptPath)
     const current = Object.values(tasks ?? {}).map(snapshotTask)
-    if (existing.length === 0 && current.length === 0) return
-    const file: DurableTaskStateFile = {
-      version: 1,
-      updatedAt: Date.now(),
-      tasks: mergeDurableTasks(existing, current),
-    }
-    await writeTaskStateFile(file, transcriptPath)
+    const file = await persistRecords(path, current)
+    if (file) rememberLoaded(path, file)
   } catch (e) {
     logForDebugging(`persistTaskStateFromAppState: ${String(e)}`)
   }

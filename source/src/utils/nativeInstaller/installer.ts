@@ -61,7 +61,10 @@ import {
   getXDGDataHome,
   getXDGStateHome,
 } from '../xdg.js'
+import { getBinaryName } from './artifact.js'
 import { downloadVersion, getLatestVersion } from './download.js'
+
+export { getBinaryName } from './artifact.js'
 import {
   acquireProcessLifetimeLock,
   cleanupStaleLocks,
@@ -106,10 +109,6 @@ export function getPlatform(): string {
   }
 
   return `${os}-${arch}`
-}
-
-export function getBinaryName(platform: string): string {
-  return platform.startsWith('win32') ? 'claude.exe' : 'claude'
 }
 
 function getBaseDirectories() {

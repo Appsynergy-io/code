@@ -1,54 +1,64 @@
 import { expect, test } from 'bun:test'
-import { readFileSync } from 'node:fs'
+import { mkdtemp, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { decideCoordinatorTransition } from '../../coordinator/transitions.ts'
-import { mergeDurableTasks } from '../../utils/task/durableMerge.ts'
 import { scaleTokensForContextWindow } from '../../utils/contextWindow.ts'
+import {
+  applyResumedTaskState,
+  persistTaskStateFromAppState,
+  type RehydratedTask,
+} from '../../utils/task/taskPersist.ts'
 
-const ROOT = join(import.meta.dir, '../../../..')
+test('compact persists the durable snapshot and resume rehydrates it', async () => {
+  expect(
+    decideCoordinatorTransition({
+      trigger: 'compact',
+      compacted: true,
+    }).action,
+  ).toBe('checkpoint')
 
-function readRepo(rel: string): string {
-  return readFileSync(join(ROOT, rel), 'utf8')
-}
+  const dir = await mkdtemp(join(tmpdir(), 'compact-persist-'))
+  const transcript = join(dir, 'sess.jsonl')
+  await writeFile(transcript, '', 'utf8')
 
-test('compact persists the durable snapshot and resume rehydrates it', () => {
-  const autoCompact = readRepo('source/src/services/compact/autoCompact.ts')
-  const compact = readRepo('source/src/services/compact/compact.ts')
-  expect(autoCompact).toContain('persistTaskStateFromAppState')
-  expect(compact).toContain('persistTaskStateFromAppState')
-  expect(compact).toMatch(
-    /persistTaskStateFromAppState\(context\.getAppState\(\)\.tasks\)/,
-  )
-
-  const afterCompact = decideCoordinatorTransition({
-    trigger: 'compact',
-    compacted: true,
-  })
-  expect(afterCompact.action).toBe('checkpoint')
-  expect(afterCompact.reason).toContain('persist task-state')
-
-  const snapshot = mergeDurableTasks(
-    [],
-    [
-      {
-        id: 'a1',
-        status: 'running',
+  await persistTaskStateFromAppState(
+    {
+      worker: {
+        id: 'worker',
         type: 'local_agent',
-        inputs: 'research the API',
+        status: 'running',
+        description: 'implement',
+        prompt: 'implement feature',
+        result: 'partial',
       },
-    ],
+    },
+    transcript,
   )
-  const resume = decideCoordinatorTransition({
-    trigger: 'resume',
-    durableTasks: snapshot,
-  })
-  expect(resume.action).toBe('rehydrate')
+
+  let state = { tasks: {} as Record<string, RehydratedTask> }
+  const tasks = applyResumedTaskState(f => {
+    state = f(state)
+  }, transcript)
+  expect(
+    decideCoordinatorTransition({
+      trigger: 'resume',
+      durableTasks: [
+        {
+          id: 'worker',
+          status: 'running',
+          type: 'local_agent',
+          inputs: 'implement feature',
+        },
+      ],
+    }).action,
+  ).toBe('rehydrate')
+  expect(tasks.worker?.prompt).toBe('implement feature')
+  expect(tasks.worker?.result).toBe('partial')
+  expect(tasks.worker?.status).toBe('killed')
 })
 
-test('autocompact buffers scale from the detected window, not a hardcoded 200k max', () => {
-  const src = readRepo('source/src/services/compact/autoCompact.ts')
-  expect(src).toContain('scaleTokensForContextWindow')
-  expect(src).toContain('getContextWindowForModel')
+test('autocompact buffers scale from the detected window', () => {
   expect(scaleTokensForContextWindow(13_000, 100_000)).toBe(
     Math.max(512, Math.round((13_000 / 200_000) * 100_000)),
   )

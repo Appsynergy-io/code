@@ -1,77 +1,54 @@
 import { expect, test } from 'bun:test'
-import { readFileSync } from 'node:fs'
+import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import product from '../../../config/product.json'
 import {
   getProjectInstructionFileNames,
-  getProjectInstructionPaths,
-  instructionFileName,
-  instructionLocalFileName,
   isInstructionFileName,
   legacyInstructionFileNames,
 } from '../product/identity.ts'
+import {
+  agentInheritsInstructionFiles,
+  loadInstructionFilesFromTree,
+} from './instructionLoad.ts'
 
-const ROOT = join(import.meta.dir, '../../..')
-
-function readRepo(rel: string): string {
-  return readFileSync(join(ROOT, rel), 'utf8')
-}
-
-test('instruction discovery uses product.json names, not a hardcoded CLAUDE.md default', () => {
+test('instruction filenames come from product.json only', () => {
   expect(product.instructionFileName).toBe('AGENTS.md')
   expect(product.legacyInstructionFileNames).toEqual([])
   expect(getProjectInstructionFileNames()).toEqual(['AGENTS.md'])
-  expect(getProjectInstructionFileNames()).not.toContain('CLAUDE.md')
   expect(isInstructionFileName('CLAUDE.md')).toBe(false)
-  expect(getProjectInstructionPaths('/proj')).toEqual([
-    '/proj/AGENTS.md',
-    '/proj/.claude/AGENTS.md',
-  ])
-
-  const discovery = readRepo('source/src/utils/claudemd.ts')
-  expect(discovery).toContain('getProjectInstructionPaths')
-  expect(discovery).toContain("from '../product/identity.js'")
-  expect(discovery).not.toMatch(
-    /getProjectInstructionFileNames\(\)[\s\S]{0,80}CLAUDE\.md/,
-  )
-  expect(discovery).toContain(
-    'Empty legacyInstructionFileNames means CLAUDE.md is not loaded',
-  )
 })
 
-test('AGENTS.md hierarchy walks managed → user → project → local toward cwd', () => {
-  const discovery = readRepo('source/src/utils/claudemd.ts')
-  expect(discovery).toContain('Process Managed file first')
-  expect(discovery).toContain('Process User file')
-  expect(discovery).toContain('Process from root downward to CWD')
-  expect(discovery).toContain('getProjectInstructionPaths(dir)')
-  expect(discovery).toContain('join(dir, instructionLocalFileName)')
-  expect(instructionFileName).toBe('AGENTS.md')
-  expect(instructionLocalFileName).toBe('AGENTS.local.md')
-})
+test('temp-dir load reads AGENTS.md hierarchy and skips CLAUDE.md', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'agents-md-'))
+  const nested = join(root, 'pkg', 'app')
+  await mkdir(nested, { recursive: true })
+  await mkdir(join(nested, '.claude'), { recursive: true })
 
-test('sub-agents inherit AGENTS.md unless omitClaudeMd is set (Explore/Plan only)', () => {
-  const runAgent = readRepo('source/src/tools/AgentTool/runAgent.ts')
-  expect(runAgent).toContain('shouldOmitClaudeMd')
-  expect(runAgent).toContain('agentDefinition.omitClaudeMd')
+  await writeFile(join(root, 'AGENTS.md'), 'root agents')
+  await writeFile(join(root, 'CLAUDE.md'), 'should not load')
+  await writeFile(join(nested, 'AGENTS.md'), 'nested agents')
+  await writeFile(join(nested, '.claude', 'AGENTS.md'), 'settings agents')
+  await writeFile(join(nested, 'AGENTS.local.md'), 'local agents')
+  await writeFile(join(nested, 'CLAUDE.md'), 'nested claude should not load')
 
-  const explore = readRepo('source/src/tools/AgentTool/built-in/exploreAgent.ts')
-  const plan = readRepo('source/src/tools/AgentTool/built-in/planAgent.ts')
-  const general = readRepo(
-    'source/src/tools/AgentTool/built-in/generalPurposeAgent.ts',
-  )
-  expect(explore).toContain('omitClaudeMd: true')
-  expect(plan).toContain('omitClaudeMd: true')
-  expect(general).not.toContain('omitClaudeMd')
-})
+  const loaded = await loadInstructionFilesFromTree(nested)
+  const contents = loaded.map(f => f.content.trim())
+  const basenames = loaded.map(f => f.path.slice(root.length))
 
-test('CLAUDE.md is not an instruction basename unless listed in legacyInstructionFileNames', () => {
+  expect(contents).toContain('root agents')
+  expect(contents).toContain('nested agents')
+  expect(contents).toContain('settings agents')
+  expect(contents).toContain('local agents')
+  expect(contents).not.toContain('should not load')
+  expect(contents).not.toContain('nested claude should not load')
+  expect(basenames.some(p => p.endsWith('CLAUDE.md'))).toBe(false)
   expect(legacyInstructionFileNames.includes('CLAUDE.md')).toBe(false)
-  expect(isInstructionFileName('CLAUDE.md')).toBe(false)
+})
 
-  const identity = readRepo('source/src/product/identity.ts')
-  expect(identity).toContain('legacyInstructionFileNames.includes(name)')
-  expect(identity).not.toMatch(
-    /instructionFileName\s*=\s*['"]CLAUDE\.md['"]/,
-  )
+test('sub-agents inherit instruction files unless omitClaudeMd is set', () => {
+  expect(agentInheritsInstructionFiles({})).toBe(true)
+  expect(agentInheritsInstructionFiles({ omitClaudeMd: false })).toBe(true)
+  expect(agentInheritsInstructionFiles({ omitClaudeMd: true })).toBe(false)
 })

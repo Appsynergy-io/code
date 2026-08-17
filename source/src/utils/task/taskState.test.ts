@@ -1,119 +1,129 @@
 import { expect, test } from 'bun:test'
-import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
+import { mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
-import { readFileSync } from 'node:fs'
-import type { DurableTaskRecord, DurableTaskStateFile } from '../../Task.ts'
+import { join } from 'node:path'
 import { decideCoordinatorTransition } from '../../coordinator/transitions.ts'
-import { mergeDurableTasks, statusForStub } from './durableMerge.ts'
+import {
+  applyResumedTaskState,
+  getTaskStatePath,
+  persistTaskStateFromAppState,
+  rehydrateTask,
+  type RehydratedTask,
+  snapshotTask,
+} from './taskPersist.ts'
 
-const ROOT = join(import.meta.dir, '../../../..')
+test('recover after compact / failed child / interrupt', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'task-recover-'))
+  const transcript = join(dir, 'sess.jsonl')
+  await writeFile(transcript, '', 'utf8')
 
-function taskStatePath(transcript: string): string {
-  if (transcript.endsWith('.jsonl')) {
-    return transcript.slice(0, -'.jsonl'.length) + '.task-state.json'
-  }
-  return join(dirname(transcript), 'task-state.json')
-}
-
-async function persist(
-  path: string,
-  current: DurableTaskRecord[],
-): Promise<DurableTaskStateFile> {
-  let existing: DurableTaskRecord[] = []
-  try {
-    const raw = await readFile(path, 'utf8')
-    existing = (JSON.parse(raw) as DurableTaskStateFile).tasks
-  } catch {
-    existing = []
-  }
-  const file: DurableTaskStateFile = {
-    version: 1,
-    updatedAt: Date.now(),
-    tasks: mergeDurableTasks(existing, current),
-  }
-  await writeFile(path, JSON.stringify(file), 'utf8')
-  return file
-}
-
-test('recover after compact / failed child / interrupt', () => {
-  const compacted = mergeDurableTasks(
-    [
-      {
+  await persistTaskStateFromAppState(
+    {
+      worker: {
         id: 'worker',
+        type: 'local_agent',
         status: 'running',
-        type: 'local_agent',
-        inputs: 'implement feature',
-        outputs: 'partial',
+        description: 'implement',
+        prompt: 'implement feature',
+        result: 'partial',
       },
-    ],
-    [
-      {
-        id: 'worker',
-        status: 'failed',
-        type: 'local_agent',
-        inputs: 'implement feature',
-        errors: ['tool crashed'],
-      },
-    ],
+    },
+    transcript,
   )
-  expect(compacted).toHaveLength(1)
-  expect(compacted[0]?.status).toBe('failed')
-  expect(compacted[0]?.inputs).toBe('implement feature')
-  expect(compacted[0]?.errors).toEqual(['tool crashed'])
+  await persistTaskStateFromAppState(
+    {
+      worker: {
+        id: 'worker',
+        type: 'local_agent',
+        status: 'failed',
+        description: 'implement',
+        prompt: 'implement feature',
+        error: 'tool crashed',
+      },
+    },
+    transcript,
+  )
 
-  expect(statusForStub('running')).toBe('killed')
-  expect(statusForStub('pending')).toBe('killed')
-  expect(statusForStub('failed')).toBe('failed')
-  expect(statusForStub('completed')).toBe('completed')
-  expect(statusForStub('killed')).toBe('killed')
+  let state = { tasks: {} as Record<string, RehydratedTask> }
+  const tasks = applyResumedTaskState(f => {
+    state = f(state)
+  }, transcript)
+  expect(tasks.worker?.status).toBe('failed')
+  expect(tasks.worker?.prompt).toBe('implement feature')
+  expect(tasks.worker?.error).toBe('tool crashed')
 
-  const resumeFailed = decideCoordinatorTransition({
-    trigger: 'spawn',
-    prompt: 'implement feature',
-    canSpawn: true,
-    durableTasks: compacted,
-  })
-  expect(resumeFailed.action).toBe('retry')
+  expect(
+    decideCoordinatorTransition({
+      trigger: 'spawn',
+      prompt: 'implement feature',
+      canSpawn: true,
+      durableTasks: [
+        {
+          id: 'worker',
+          status: 'failed',
+          type: 'local_agent',
+          inputs: 'implement feature',
+        },
+      ],
+    }).action,
+  ).toBe('retry')
 
-  const resumeAfterCompact = decideCoordinatorTransition({
-    trigger: 'resume',
-    durableTasks: compacted,
-  })
-  expect(resumeAfterCompact.action).toBe('rehydrate')
+  expect(rehydrateTask({ id: 'x', status: 'running' }).status).toBe('killed')
+  expect(rehydrateTask({ id: 'x', status: 'pending' }).status).toBe('killed')
+  expect(rehydrateTask({ id: 'x', status: 'completed' }).status).toBe(
+    'completed',
+  )
 })
 
 test('parallel local agents merge into one sidecar without clobbering', async () => {
-  const dir = await mkdtemp(join(tmpdir(), 'task-state-'))
+  const dir = await mkdtemp(join(tmpdir(), 'task-parallel-'))
   const transcript = join(dir, 'sess.jsonl')
-  const path = taskStatePath(transcript)
-  expect(path).toBe(join(dir, 'sess.task-state.json'))
+  await writeFile(transcript, '', 'utf8')
+  expect(getTaskStatePath(transcript)).toBe(join(dir, 'sess.task-state.json'))
 
-  await persist(path, [
-    { id: 'agent-a', status: 'running', type: 'local_agent', inputs: 'A' },
-  ])
-  const afterB = await persist(path, [
-    { id: 'agent-b', status: 'running', type: 'local_agent', inputs: 'B' },
-  ])
-  expect(afterB.tasks.map(t => t.id).sort()).toEqual(['agent-a', 'agent-b'])
-  expect(afterB.tasks.find(t => t.id === 'agent-a')?.inputs).toBe('A')
-  expect(afterB.tasks.find(t => t.id === 'agent-b')?.inputs).toBe('B')
-
-  const afterADone = await persist(path, [
+  // Production persist snapshots every AppState task, then merges by id.
+  await persistTaskStateFromAppState(
     {
-      id: 'agent-a',
-      status: 'completed',
-      type: 'local_agent',
-      outputs: 'done-a',
+      'agent-a': {
+        id: 'agent-a',
+        type: 'local_agent',
+        status: 'running',
+        prompt: 'A',
+      },
+      'agent-b': {
+        id: 'agent-b',
+        type: 'local_agent',
+        status: 'running',
+        prompt: 'B',
+      },
     },
-  ])
-  expect(afterADone.tasks.find(t => t.id === 'agent-b')?.inputs).toBe('B')
-  expect(afterADone.tasks.find(t => t.id === 'agent-a')?.outputs).toBe('done-a')
-
-  const src = readFileSync(
-    join(ROOT, 'source/src/utils/task/taskState.ts'),
-    'utf8',
+    transcript,
   )
-  expect(src).toContain('mergeDurableTasks(existing, current)')
-  expect(src).toContain('persistTaskStateFromAppState')
+
+  await persistTaskStateFromAppState(
+    {
+      'agent-a': {
+        id: 'agent-a',
+        type: 'local_agent',
+        status: 'completed',
+        prompt: 'A',
+        result: 'done-a',
+      },
+    },
+    transcript,
+  )
+
+  let state = { tasks: {} as Record<string, RehydratedTask> }
+  const tasks = applyResumedTaskState(f => {
+    state = f(state)
+  }, transcript)
+  expect(Object.keys(tasks).sort()).toEqual(['agent-a', 'agent-b'])
+  expect(tasks['agent-a']?.result).toBe('done-a')
+  expect(tasks['agent-b']?.prompt).toBe('B')
+  expect(tasks['agent-a']?.status).toBe('completed')
+  expect(tasks['agent-b']?.status).toBe('killed')
+
+  // Overlapping persists are last-write-wins on the file; merge-by-id is
+  // the only safety when callers snapshot the full AppState (as above).
+  expect(snapshotTask({ id: 'z', status: 'running', type: 'local_agent' }).errors).toEqual([])
 })

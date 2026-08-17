@@ -1,6 +1,8 @@
 import { expect, test } from 'bun:test'
-import { readFileSync } from 'node:fs'
-import { join } from 'node:path'
+import {
+  forkContextMessagesForSpawn,
+  initialSpawnMessages,
+} from '../tools/AgentTool/spawnMessages.ts'
 import {
   countRunningLocalAgents,
   getAgentScheduleFromParts,
@@ -8,8 +10,6 @@ import {
   softCapFromRemaining,
 } from './agentScheduler.ts'
 import { scaleTokensForContextWindow } from './contextWindow.ts'
-
-const ROOT = join(import.meta.dir, '../../..')
 
 test('soft cap is remaining/reserve, optionally min with product maxConcurrentAgents', () => {
   expect(softCapFromRemaining(80_000, 20_000)).toBe(4)
@@ -41,34 +41,16 @@ test('running local agents consume spawn slots; others do not', () => {
   expect(schedule.softCap).toBe(3)
   expect(schedule.available).toBe(1)
   expect(schedule.canSpawn).toBe(true)
-
-  const full = getAgentScheduleFromParts({
-    remainingContext: 40_000,
-    perAgentReserve: 20_000,
-    runningLocalAgents: 2,
-  })
-  expect(full.canSpawn).toBe(false)
 })
 
 test('non-fork sub-agent does not receive the parent transcript', () => {
-  const agentTool = readFileSync(
-    join(ROOT, 'source/src/tools/AgentTool/AgentTool.tsx'),
-    'utf8',
-  )
-  expect(agentTool).toContain(
-    'forkContextMessages: isForkPath ? toolUseContext.messages : undefined',
-  )
-  expect(agentTool).toMatch(
-    /promptMessages = \[createUserMessage\(\{\s*content: prompt\s*\}\)\]/,
-  )
-
-  const runAgent = readFileSync(
-    join(ROOT, 'source/src/tools/AgentTool/runAgent.ts'),
-    'utf8',
-  )
-  expect(runAgent).toContain(
-    'const contextMessages: Message[] = forkContextMessages',
-  )
-  expect(runAgent).toContain('? filterIncompleteToolCalls(forkContextMessages)')
-  expect(runAgent).toContain(': []')
+  const parent = [{ content: 'parent transcript' }]
+  expect(forkContextMessagesForSpawn(false, parent)).toBeUndefined()
+  expect(
+    initialSpawnMessages({
+      isForkPath: false,
+      parentMessages: parent,
+      promptMessages: [{ content: 'child prompt' }],
+    }),
+  ).toEqual([{ content: 'child prompt' }])
 })

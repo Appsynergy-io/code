@@ -81,6 +81,7 @@ import type { ContentReplacementState } from '../../utils/toolResultStorage.js'
 import { createAgentId } from '../../utils/uuid.js'
 import { resolveAgentTools } from './agentToolUtils.js'
 import { type AgentDefinition, isBuiltInAgent } from './loadAgentsDir.js'
+import { initialSpawnMessages } from './spawnMessages.js'
 
 /**
  * Initialize agent-specific MCP servers
@@ -370,7 +371,11 @@ export async function* runAgent({
   const contextMessages: Message[] = forkContextMessages
     ? filterIncompleteToolCalls(forkContextMessages)
     : []
-  const initialMessages: Message[] = [...contextMessages, ...promptMessages]
+  const initialMessages: Message[] = initialSpawnMessages({
+    isForkPath: forkContextMessages !== undefined,
+    parentMessages: contextMessages,
+    promptMessages,
+  })
 
   const agentReadFileState =
     forkContextMessages !== undefined

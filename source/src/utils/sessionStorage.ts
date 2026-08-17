@@ -206,11 +206,9 @@ export function getTranscriptPath(): string {
 
 /** Sibling of the session transcript: `{sessionId}.task-state.json`. */
 export function getTaskStatePath(transcriptPath?: string): string {
-  const transcript = transcriptPath ?? getTranscriptPath()
-  if (transcript.endsWith('.jsonl')) {
-    return transcript.slice(0, -'.jsonl'.length) + '.task-state.json'
-  }
-  return join(dirname(transcript), 'task-state.json')
+  const { getTaskStatePath: pathFromTranscript } =
+    require('./task/taskPersist.js') as typeof import('./task/taskPersist.js')
+  return pathFromTranscript(transcriptPath ?? getTranscriptPath())
 }
 
 export function getTranscriptPathForSession(sessionId: string): string {

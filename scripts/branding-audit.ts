@@ -109,22 +109,25 @@ export function runBrandingAudit(): BrandingAudit {
       generated.push(rel)
       continue
     }
+    let text = ''
+    try {
+      text = readFileSync(join(ROOT, rel), 'utf8')
+    } catch {
+      text = ''
+    }
+
     if (CHANGED.has(rel)) {
       changed.push(rel)
+      if (text && NEEDS_REVIEW_RE.test(text)) {
+        needsReview.push(rel)
+      }
       continue
     }
     if (PRESERVED.has(rel)) {
       preserved.push(rel)
       continue
     }
-
-    let text = ''
-    try {
-      text = readFileSync(join(ROOT, rel), 'utf8')
-    } catch {
-      continue
-    }
-    if (!BRAND_RE.test(text)) continue
+    if (!text || !BRAND_RE.test(text)) continue
 
     // User-facing leftover product strings. Extracted-source comments and
     // API/SDK identifiers stay in preserved.
@@ -154,6 +157,27 @@ function writeAudit(audit: BrandingAudit): string {
 
 if (import.meta.main) {
   const audit = runBrandingAudit()
-  writeAudit(audit)
-  process.stdout.write(`${JSON.stringify(audit, null, 2)}\n`)
+  const serialized = `${JSON.stringify(audit, null, 2)}\n`
+  const write = process.argv.includes('--write')
+  const check = process.argv.includes('--check') || !write
+  if (write) {
+    writeAudit(audit)
+  }
+  process.stdout.write(serialized)
+  if (check) {
+    const outPath = join(ROOT, 'release/branding-audit.json')
+    let existing = ''
+    try {
+      existing = readFileSync(outPath, 'utf8')
+    } catch {
+      process.stderr.write('missing release/branding-audit.json\n')
+      process.exit(1)
+    }
+    if (existing !== serialized) {
+      process.stderr.write(
+        'release/branding-audit.json does not match the current scan\n',
+      )
+      process.exit(1)
+    }
+  }
 }

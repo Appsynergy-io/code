@@ -52,6 +52,7 @@ import { type AgentToolResult, agentToolResultSchema, classifyHandoffIfNeeded, e
 import { GENERAL_PURPOSE_AGENT } from './built-in/generalPurposeAgent.js';
 import { AGENT_TOOL_NAME, LEGACY_AGENT_TOOL_NAME, ONE_SHOT_BUILTIN_AGENT_TYPES } from './constants.js';
 import { buildForkedMessages, buildWorktreeNotice, FORK_AGENT, isForkSubagentEnabled, isInForkChild } from './forkSubagent.js';
+import { forkContextMessagesForSpawn } from './spawnMessages.js';
 import type { AgentDefinition } from './loadAgentsDir.js';
 import { filterAgentsByMcpRequirements, hasRequiredMcpServers, isBuiltInAgent } from './loadAgentsDir.js';
 import { getPrompt } from './prompt.js';
@@ -722,7 +723,7 @@ export const AgentTool = buildTool({
       availableTools: isForkPath ? toolUseContext.options.tools : workerTools,
       // Pass parent conversation when the fork-subagent path needs full
       // context. useExactTools inherits thinkingConfig (runAgent.ts:624).
-      forkContextMessages: isForkPath ? toolUseContext.messages : undefined,
+      forkContextMessages: forkContextMessagesForSpawn(isForkPath, toolUseContext.messages),
       ...(isForkPath && {
         useExactTools: true
       }),

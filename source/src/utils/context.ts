@@ -12,6 +12,7 @@ import {
   COMPACT_MAX_OUTPUT_TOKENS,
   getCompactMaxOutputTokensForWindow,
   MODEL_CONTEXT_WINDOW_DEFAULT,
+  resolveContextWindow,
   scaleTokensForContextWindow,
 } from './contextWindow.js'
 
@@ -19,6 +20,7 @@ export {
   COMPACT_MAX_OUTPUT_TOKENS,
   getCompactMaxOutputTokensForWindow,
   MODEL_CONTEXT_WINDOW_DEFAULT,
+  resolveContextWindow,
   scaleTokensForContextWindow,
 }
 
@@ -67,38 +69,20 @@ export function getContextWindowForModel(
   // takes precedence over all other resolution, including 1M detection, so
   // local models can set window size and users can cap a 1M-capable endpoint.
   // No hardcoded ceiling — the parsed env value is the window.
-  const override = getContextWindowOverride()
-  if (override !== undefined) {
-    return override
-  }
-
-  // [1m] suffix — explicit client-side opt-in, respected over all detection
-  if (has1mContext(model)) {
-    return 1_000_000
-  }
-
-  const advertised = getAdvertisedMaxInputTokens(model)
-  if (advertised !== undefined && advertised > 0) {
-    // HIPAA / disable-1M: clamp only true 1M+ ads, not every window > 200k.
-    if (advertised >= 1_000_000 && is1mContextDisabled()) {
-      return MODEL_CONTEXT_WINDOW_DEFAULT
-    }
-    return advertised
-  }
-
-  if (betas?.includes(CONTEXT_1M_BETA_HEADER) && modelSupports1M(model)) {
-    return 1_000_000
-  }
-  if (getSonnet1mExpTreatmentEnabled(model)) {
-    return 1_000_000
-  }
-  if (process.env.USER_TYPE === 'ant') {
-    const antModel = resolveAntModel(model)
-    if (antModel?.contextWindow) {
-      return antModel.contextWindow
-    }
-  }
-  return MODEL_CONTEXT_WINDOW_DEFAULT
+  return resolveContextWindow({
+    envOverride: getContextWindowOverride(),
+    has1mSuffix: has1mContext(model),
+    advertised: getAdvertisedMaxInputTokens(model),
+    disable1m: is1mContextDisabled(),
+    oneMViaBeta: Boolean(
+      betas?.includes(CONTEXT_1M_BETA_HEADER) && modelSupports1M(model),
+    ),
+    oneMViaExperiment: getSonnet1mExpTreatmentEnabled(model),
+    antContextWindow:
+      process.env.USER_TYPE === 'ant'
+        ? resolveAntModel(model)?.contextWindow
+        : undefined,
+  })
 }
 
 export function getSonnet1mExpTreatmentEnabled(model: string): boolean {

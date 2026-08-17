@@ -47,11 +47,10 @@ import {
   getOriginalCwd,
 } from '../bootstrap/state.js'
 import {
-  getProjectInstructionPaths,
-  instructionLocalFileName,
   isInstructionFileName,
   projectSettingsDir,
 } from '../product/identity.js'
+import { listInstructionFilesInDir } from './instructionLoad.js'
 import { truncateEntrypointContent } from '../memdir/memdir.js'
 import { getAutoMemEntrypoint, isAutoMemoryEnabled } from '../memdir/paths.js'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../services/analytics/growthbook.js'
@@ -894,19 +893,25 @@ export const getMemoryFiles = memoize(
         pathInWorkingPath(dir, canonicalRoot) &&
         !pathInWorkingPath(dir, gitRoot)
 
-      // Try reading project instruction files — only if projectSettings is enabled
-      if (isSettingSourceEnabled('projectSettings') && !skipProject) {
-        for (const projectPath of getProjectInstructionPaths(dir)) {
-          result.push(
-            ...(await processMemoryFile(
-              projectPath,
-              'Project',
-              processedPaths,
-              includeExternal,
-            )),
-          )
+      for (const candidate of listInstructionFilesInDir(dir)) {
+        if (candidate.type === 'Project') {
+          if (!isSettingSourceEnabled('projectSettings') || skipProject) {
+            continue
+          }
+        } else if (!isSettingSourceEnabled('localSettings')) {
+          continue
         }
+        result.push(
+          ...(await processMemoryFile(
+            candidate.path,
+            candidate.type,
+            processedPaths,
+            includeExternal,
+          )),
+        )
+      }
 
+      if (isSettingSourceEnabled('projectSettings') && !skipProject) {
         result.push(
           ...(await processMdRules({
             rulesDir: getProjectRulesDir(dir),
@@ -915,19 +920,6 @@ export const getMemoryFiles = memoize(
             includeExternal,
             conditionalRule: false,
           })),
-        )
-      }
-
-      // Try reading local instruction file — only if localSettings is enabled
-      if (isSettingSourceEnabled('localSettings')) {
-        const localPath = join(dir, instructionLocalFileName)
-        result.push(
-          ...(await processMemoryFile(
-            localPath,
-            'Local',
-            processedPaths,
-            includeExternal,
-          )),
         )
       }
     }
@@ -939,11 +931,12 @@ export const getMemoryFiles = memoize(
     if (isEnvTruthy(process.env.CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD)) {
       const additionalDirs = getAdditionalDirectoriesForClaudeMd()
       for (const dir of additionalDirs) {
-        for (const projectPath of getProjectInstructionPaths(dir)) {
+        for (const candidate of listInstructionFilesInDir(dir)) {
+          if (candidate.type !== 'Project') continue
           result.push(
             ...(await processMemoryFile(
-              projectPath,
-              'Project',
+              candidate.path,
+              candidate.type,
               processedPaths,
               includeExternal,
             )),
@@ -1242,25 +1235,19 @@ export async function getMemoryFilesForNestedDirectory(
 ): Promise<MemoryFileInfo[]> {
   const result: MemoryFileInfo[] = []
 
-  // Process project memory files (<name> and <settingsDir>/<name>)
-  if (isSettingSourceEnabled('projectSettings')) {
-    for (const projectPath of getProjectInstructionPaths(dir)) {
-      result.push(
-        ...(await processMemoryFile(
-          projectPath,
-          'Project',
-          processedPaths,
-          false,
-        )),
-      )
+  for (const candidate of listInstructionFilesInDir(dir)) {
+    if (candidate.type === 'Project') {
+      if (!isSettingSourceEnabled('projectSettings')) continue
+    } else if (!isSettingSourceEnabled('localSettings')) {
+      continue
     }
-  }
-
-  // Process local memory file
-  if (isSettingSourceEnabled('localSettings')) {
-    const localPath = join(dir, instructionLocalFileName)
     result.push(
-      ...(await processMemoryFile(localPath, 'Local', processedPaths, false)),
+      ...(await processMemoryFile(
+        candidate.path,
+        candidate.type,
+        processedPaths,
+        false,
+      )),
     )
   }
 

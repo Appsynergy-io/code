@@ -19,7 +19,8 @@ import { toError } from '../errors.js'
 import { getFsImplementation } from '../fsOperations.js'
 import { logError } from '../log.js'
 import { sleep } from '../sleep.js'
-import { getBinaryName, getPlatform } from './installer.js'
+import { binaryArtifactUrl, getBinaryName } from './artifact.js'
+import { getPlatform } from './installer.js'
 
 const RELEASE_CHANNELS: readonly ReleaseChannel[] = [
   'latest',
@@ -272,9 +273,8 @@ export async function downloadVersionFromBinaryRepo(
 
   const expectedChecksum = platformInfo.checksum
 
-  // Binary repo layout: ${baseUrl}/${version}/${platform}/${binaryName}
   const binaryName = getBinaryName(platform)
-  const binaryUrl = `${baseUrl}/${version}/${platform}/${binaryName}`
+  const binaryUrl = binaryArtifactUrl(baseUrl, version, platform)
 
   // Write to staging
   await fs.mkdir(stagingPath)
