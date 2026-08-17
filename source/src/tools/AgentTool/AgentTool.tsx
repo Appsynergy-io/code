@@ -7,6 +7,7 @@ import { z } from 'zod/v4';
 import { clearInvokedSkillsForAgent, getSdkAgentProgressSummariesEnabled } from '../../bootstrap/state.js';
 import { enhanceSystemPromptWithEnvDetails, getSystemPrompt } from '../../constants/prompts.js';
 import { isCoordinatorMode } from '../../coordinator/coordinatorMode.js';
+import { decideCoordinatorTransition } from '../../coordinator/transitions.js';
 import { startAgentSummarization } from '../../services/AgentSummary/agentSummary.js';
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../../services/analytics/growthbook.js';
 import { type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS, logEvent } from '../../services/analytics/index.js';
@@ -16,6 +17,7 @@ import { checkRemoteAgentEligibility, formatPreconditionError, getRemoteTaskSess
 import { assembleToolPool } from '../../tools.js';
 import { asAgentId } from '../../types/ids.js';
 import { runWithAgentContext } from '../../utils/agentContext.js';
+import { countRunningLocalAgents, getAgentSchedule } from '../../utils/agentScheduler.js';
 import { isAgentSwarmsEnabled } from '../../utils/agentSwarmsEnabled.js';
 import { getCwd, runWithCwdOverride } from '../../utils/cwd.js';
 import { logForDebugging } from '../../utils/debug.js';
@@ -34,10 +36,11 @@ import { sleep } from '../../utils/sleep.js';
 import { buildEffectiveSystemPrompt } from '../../utils/systemPrompt.js';
 import { asSystemPrompt } from '../../utils/systemPromptType.js';
 import { getTaskOutputPath } from '../../utils/task/diskOutput.js';
+import { getLastLoadedTaskState } from '../../utils/task/taskState.js';
 import { getParentSessionId, isTeammate } from '../../utils/teammate.js';
 import { isInProcessTeammate } from '../../utils/teammateContext.js';
 import { teleportToRemote } from '../../utils/teleport.js';
-import { getAssistantMessageContentLength } from '../../utils/tokens.js';
+import { getAssistantMessageContentLength, tokenCountWithEstimation } from '../../utils/tokens.js';
 import { createAgentId } from '../../utils/uuid.js';
 import { createAgentWorktree, hasWorktreeChanges, removeAgentWorktree } from '../../utils/worktree.js';
 import { BASH_TOOL_NAME } from '../BashTool/toolName.js';
@@ -45,13 +48,14 @@ import { BackgroundHint } from '../BashTool/UI.js';
 import { FILE_READ_TOOL_NAME } from '../FileReadTool/prompt.js';
 import { spawnTeammate } from '../shared/spawnMultiAgent.js';
 import { setAgentColor } from './agentColorManager.js';
-import { agentToolResultSchema, classifyHandoffIfNeeded, emitTaskProgress, extractPartialResult, finalizeAgentTool, getLastToolUseName, runAsyncAgentLifecycle } from './agentToolUtils.js';
+import { type AgentToolResult, agentToolResultSchema, classifyHandoffIfNeeded, emitTaskProgress, extractPartialResult, finalizeAgentTool, getLastToolUseName, runAsyncAgentLifecycle } from './agentToolUtils.js';
 import { GENERAL_PURPOSE_AGENT } from './built-in/generalPurposeAgent.js';
 import { AGENT_TOOL_NAME, LEGACY_AGENT_TOOL_NAME, ONE_SHOT_BUILTIN_AGENT_TYPES } from './constants.js';
 import { buildForkedMessages, buildWorktreeNotice, FORK_AGENT, isForkSubagentEnabled, isInForkChild } from './forkSubagent.js';
 import type { AgentDefinition } from './loadAgentsDir.js';
 import { filterAgentsByMcpRequirements, hasRequiredMcpServers, isBuiltInAgent } from './loadAgentsDir.js';
 import { getPrompt } from './prompt.js';
+import { resumeAgentBackground } from './resumeAgent.js';
 import { runAgent } from './runAgent.js';
 import { renderGroupedAgentToolUse, renderToolResultMessage, renderToolUseErrorMessage, renderToolUseMessage, renderToolUseProgressMessage, renderToolUseRejectedMessage, renderToolUseTag, userFacingName, userFacingNameBackgroundColor } from './UI.js';
 
@@ -480,6 +484,77 @@ export const AgentTool = buildTool({
         data: Output;
       };
     }
+
+    // Soft cap from remaining context; reuse/retry from task-state before spawn.
+    const schedule = getAgentSchedule({
+      model: toolUseContext.options.mainLoopModel,
+      usedTokens: tokenCountWithEstimation(toolUseContext.messages ?? []),
+      runningLocalAgents: countRunningLocalAgents(appState.tasks)
+    });
+    logForDebugging(`agentScheduler: running=${schedule.running} cap=${schedule.softCap} remaining=${schedule.remainingContext} reserve=${schedule.perAgentReserve}`);
+    const spawnDecision = decideCoordinatorTransition({
+      trigger: 'spawn',
+      prompt,
+      canSpawn: schedule.canSpawn,
+      shouldCompact: schedule.remainingContext < schedule.perAgentReserve,
+      remainingContext: schedule.remainingContext,
+      perAgentReserve: schedule.perAgentReserve,
+      tasks: appState.tasks,
+      durableTasks: getLastLoadedTaskState()?.tasks
+    });
+    logForDebugging(`coordinator spawn: ${spawnDecision.action} (${spawnDecision.reason})`);
+    const canReadOutputFile = toolUseContext.options.tools.some(t => toolMatchesName(t, FILE_READ_TOOL_NAME) || toolMatchesName(t, BASH_TOOL_NAME));
+    const asAsyncLaunch = (agentId: string, launchDescription: string) => ({
+      data: {
+        isAsync: true as const,
+        status: 'async_launched' as const,
+        agentId,
+        description: launchDescription,
+        prompt,
+        outputFile: getTaskOutputPath(agentId),
+        canReadOutputFile
+      }
+    });
+    if (spawnDecision.action === 'reuse-result' && spawnDecision.result && typeof spawnDecision.result === 'object' && Array.isArray((spawnDecision.result as AgentToolResult).content)) {
+      return {
+        data: {
+          status: 'completed' as const,
+          prompt,
+          ...(spawnDecision.result as AgentToolResult)
+        }
+      };
+    }
+    if ((spawnDecision.action === 'retry' || spawnDecision.action === 'delegate' || spawnDecision.action === 'continue') && spawnDecision.taskId) {
+      if (spawnDecision.action === 'continue') {
+        const existing = appState.tasks[spawnDecision.taskId] ?? Object.values(appState.tasks).find(t => t.type === 'local_agent' && (t.agentId === spawnDecision.taskId || t.id === spawnDecision.taskId));
+        if (existing?.type === 'local_agent' && existing.status === 'running') {
+          return asAsyncLaunch(existing.agentId ?? existing.id, existing.description || description);
+        }
+      } else {
+        try {
+          const resumed = await resumeAgentBackground({
+            agentId: spawnDecision.taskId,
+            prompt,
+            toolUseContext,
+            canUseTool,
+            invokingRequestId: assistantMessage?.requestId
+          });
+          return asAsyncLaunch(resumed.agentId, resumed.description);
+        } catch (error) {
+          if (!schedule.canSpawn) {
+            throw error;
+          }
+          logForDebugging(`coordinator ${spawnDecision.action} fell through to spawn: ${errorMessage(error)}`);
+        }
+      }
+    }
+    if (spawnDecision.action === 'compact') {
+      throw new Error(`Cannot spawn another local agent: remaining context ${schedule.remainingContext} is below the per-agent reserve ${schedule.perAgentReserve}. Compact first.`);
+    }
+    if (spawnDecision.action === 'stop') {
+      throw new Error(`Cannot spawn another local agent: ${schedule.running} running, ${schedule.softCap} allowed from remaining context (${schedule.remainingContext} tokens / ${schedule.perAgentReserve} reserve).`);
+    }
+
     // System prompt + prompt messages: branch on fork path.
     //
     // Fork path: child inherits the PARENT's system prompt (not FORK_AGENT's)

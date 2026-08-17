@@ -10,6 +10,7 @@ import {
   type TaskStatus,
   type TaskType,
 } from '../../Task.js'
+import { decideCoordinatorTransition } from '../../coordinator/transitions.js'
 import type { AppState } from '../../state/AppState.js'
 import type { InProcessTeammateTaskState } from '../../tasks/InProcessTeammateTask/types.js'
 import type { LocalAgentTaskState } from '../../tasks/LocalAgentTask/LocalAgentTask.js'
@@ -426,6 +427,14 @@ export function applyResumedTaskState(
   const file = transcriptPath
     ? readTaskStateFileSync(transcriptPath)
     : lastLoaded
+  const decision = decideCoordinatorTransition({
+    trigger: 'resume',
+    durableTasks: file?.tasks,
+    appStateHydrated: false,
+  })
+  logForDebugging(
+    `coordinator resume: ${decision.action} (${decision.reason})`,
+  )
   const tasks = hydrateTasksFromDurable(file)
   setAppState(prev => {
     disposeSessionTasks(prev.tasks)
@@ -437,7 +446,16 @@ export function applyResumedTaskState(
 export function loadHydratedTasks(
   transcriptPath?: string,
 ): Record<string, TaskState> {
-  return hydrateTasksFromDurable(readTaskStateFileSync(transcriptPath))
+  const file = readTaskStateFileSync(transcriptPath)
+  const decision = decideCoordinatorTransition({
+    trigger: 'resume',
+    durableTasks: file?.tasks,
+    appStateHydrated: false,
+  })
+  logForDebugging(
+    `coordinator resume: ${decision.action} (${decision.reason})`,
+  )
+  return hydrateTasksFromDurable(file)
 }
 
 /**

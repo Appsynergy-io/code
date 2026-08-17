@@ -1,6 +1,7 @@
 import { feature } from 'bun:bundle'
 import { markPostCompaction } from 'src/bootstrap/state.js'
 import { getSdkBetas } from '../../bootstrap/state.js'
+import { decideCoordinatorTransition } from '../../coordinator/transitions.js'
 import type { QuerySource } from '../../constants/querySource.js'
 import type { ToolUseContext } from '../../Tool.js'
 import type { Message } from '../../types/message.js'
@@ -317,7 +318,12 @@ export async function autoCompactIfNeeded(
     snipTokensFreed,
   )
 
-  if (!shouldCompact) {
+  const compactDecision = decideCoordinatorTransition({
+    trigger: 'compact',
+    shouldCompact,
+    tasks: toolUseContext.getAppState().tasks,
+  })
+  if (compactDecision.action !== 'compact') {
     return { wasCompacted: false }
   }
 
@@ -348,7 +354,14 @@ export async function autoCompactIfNeeded(
       notifyCompaction(querySource ?? 'compact', toolUseContext.agentId)
     }
     markPostCompaction()
-    await persistTaskStateFromAppState(toolUseContext.getAppState().tasks)
+    if (
+      decideCoordinatorTransition({
+        trigger: 'compact',
+        compacted: true,
+      }).action === 'checkpoint'
+    ) {
+      await persistTaskStateFromAppState(toolUseContext.getAppState().tasks)
+    }
     return {
       wasCompacted: true,
       compactionResult: sessionMemoryResult,

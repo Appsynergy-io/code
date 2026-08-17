@@ -37,3 +37,11 @@ export function getAllTasks(): Task[] {
 export function getTaskByType(type: TaskType): Task | undefined {
   return getAllTasks().find(t => t.type === type)
 }
+
+export { countRunningLocalAgents } from './utils/agentScheduler.js'
+
+export function listLocalAgentTasks<
+  T extends { type: string; status: string },
+>(tasks: Record<string, T> | undefined): T[] {
+  return Object.values(tasks ?? {}).filter(t => t.type === 'local_agent')
+}
