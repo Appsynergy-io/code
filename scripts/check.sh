@@ -184,6 +184,19 @@ stage_package() {
   bash "$ROOT/build/package.sh" "$@"
 }
 
+# bun --compile artifacts: ELF / Mach-O / PE. Reject the old cli.js copy.
+is_compiled_binary() {
+  local os="$1" path="$2"
+  local magic
+  magic="$(head -c 4 "$path" | xxd -p)"
+  case "$os" in
+    linux) [[ "$magic" == 7f454c46 ]] ;;
+    darwin) [[ "$magic" == cffaedfe || "$magic" == feedfacf || "$magic" == cafebabe ]] ;;
+    win32) [[ "$(head -c 2 "$path")" == MZ ]] ;;
+    *) return 1 ;;
+  esac
+}
+
 validate_one() {
   local os="$1" arch="$2"
   local platform="${os}-${arch}"
@@ -197,6 +210,10 @@ validate_one() {
   fi
   if [[ ! -s "$path" ]]; then
     echo "empty artifact ${path}" >&2
+    return 1
+  fi
+  if ! is_compiled_binary "$os" "$path"; then
+    echo "artifact ${path} is not a compiled ${os} binary (refusing node scripts)" >&2
     return 1
   fi
   if [[ ! -f "vendor/ripgrep/${vendor}/rg" && ! -f "vendor/ripgrep/${vendor}/rg.exe" ]]; then
