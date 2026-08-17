@@ -20,6 +20,7 @@
   },
   "include": [
     "scripts/**/*.ts",
+    "release/publish-index.ts",
     "source/src/vendor/bun-bundle.ts",
     "source/src/vendor/bun-bundle.test.ts",
     "source/src/product/identity.ts",

@@ -1,0 +1,178 @@
+name: Release
+
+# Tag-driven only. latest = newest vX.Y.Z; stable = that same non-prerelease
+# (tagging vX.Y.Z is the promotion); nightly = vX.Y.Z-nightly.N.
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  BUN_VERSION: '1.3.14'
+
+jobs:
+  validate-tag:
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.tag.outputs.version }}
+      prerelease: ${{ steps.tag.outputs.prerelease }}
+      channels: ${{ steps.tag.outputs.channels }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+      - id: tag
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-nightly\.[0-9]+)?$ ]]; then
+            echo "tag must be vX.Y.Z or vX.Y.Z-nightly.N, got: ${TAG}" >&2
+            exit 1
+          fi
+          VERSION="${TAG#v}"
+          PKG="$(bun -e 'import pkg from "./package.json"; process.stdout.write(pkg.version)')"
+          if [[ "$VERSION" == *-nightly.* ]]; then
+            base="${VERSION%-nightly.*}"
+            if [[ "$base" != "$PKG" ]]; then
+              echo "nightly tag ${VERSION} does not match package.json ${PKG}" >&2
+              exit 1
+            fi
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+            echo "channels=nightly" >> "$GITHUB_OUTPUT"
+          else
+            if [[ "$VERSION" != "$PKG" ]]; then
+              echo "tag ${VERSION} does not match package.json ${PKG}" >&2
+              exit 1
+            fi
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+            echo "channels=latest,stable" >> "$GITHUB_OUTPUT"
+          fi
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "validated ${TAG} → ${VERSION} (package.json ${PKG})"
+
+  test:
+    needs: validate-tag
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+      - run: bun install --ignore-scripts
+      - run: bash scripts/check.sh typecheck unit integration context-management task-recovery sub-agent
+
+  build:
+    needs: test
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+      - run: bun install --ignore-scripts
+      - run: bash scripts/check.sh build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cli-js
+          path: cli.js
+          if-no-files-found: error
+
+  package:
+    needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [linux, darwin, win32]
+        arch: [x64, arm64]
+    name: package (${{ matrix.os }}-${{ matrix.arch }})
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+      - run: bun install --ignore-scripts
+      - uses: actions/download-artifact@v4
+        with:
+          name: cli-js
+          path: .
+      - run: bash scripts/check.sh package ${{ matrix.os }} ${{ matrix.arch }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: artifact-${{ matrix.os }}-${{ matrix.arch }}
+          path: dist/${{ matrix.os }}-${{ matrix.arch }}/
+          if-no-files-found: error
+
+  publish:
+    needs: [validate-tag, package]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ needs.validate-tag.outputs.version }}
+      CHANNELS: ${{ needs.validate-tag.outputs.channels }}
+      PRERELEASE: ${{ needs.validate-tag.outputs.prerelease }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+      - run: bun install --ignore-scripts
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: artifact-*
+          path: collected
+      - name: Assemble dist/ and checksums
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          for dir in collected/artifact-*; do
+            platform="${dir#collected/artifact-}"
+            mkdir -p "dist/${platform}"
+            cp -R "${dir}/." "dist/${platform}/"
+          done
+          bash build/package.sh --checksums
+          bash scripts/check.sh validate
+      - name: GitHub Release
+        run: |
+          set -euo pipefail
+          mkdir -p release-assets
+          cp dist/checksums.txt release-assets/
+          for dir in dist/*/; do
+            platform="$(basename "$dir")"
+            if [[ -f "${dir}claude" ]]; then
+              cp "${dir}claude" "release-assets/${platform}-claude"
+            fi
+            if [[ -f "${dir}claude.exe" ]]; then
+              cp "${dir}claude.exe" "release-assets/${platform}-claude.exe"
+            fi
+          done
+          extra=()
+          if [[ "$PRERELEASE" == true ]]; then
+            extra+=(--prerelease)
+          fi
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" release-assets/* --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" release-assets/* \
+              --title "$VERSION" \
+              --notes "Artifacts for ${VERSION}. Channel pointers: ${CHANNELS}." \
+              "${extra[@]}"
+          fi
+      - name: Write binary-repo channel pointers
+        run: |
+          bun release/publish-index.ts \
+            --version "$VERSION" \
+            --artifacts ./dist \
+            --channels "$CHANNELS"
