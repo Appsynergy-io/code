@@ -11,6 +11,7 @@ import { maybeMarkProjectOnboardingComplete } from '../projectOnboardingState.js
 import { isEnvTruthy } from '../utils/envUtils.js'
 
 const OTHER_AI_CONFIGS = [
+  'CLAUDE.md',
   '.cursor/rules',
   '.cursorrules',
   '.github/copilot-instructions.md',
