@@ -1,0 +1,25 @@
+{
+  "productName": "Code",
+  "cliName": "code",
+  "packageName": "@appsynergy/code",
+  "displayName": "Code",
+  "repository": "Appsynergy-io/code",
+  "docsUrl": "https://github.com/Appsynergy-io/code",
+  "issuesUrl": "https://github.com/Appsynergy-io/code/issues",
+  "feedbackChannel": "https://github.com/Appsynergy-io/code/issues",
+  "homepage": "https://github.com/Appsynergy-io/code",
+  "description": "Use Code, an agentic coding CLI, right from your terminal. Code can understand your codebase, edit files, run terminal commands, and handle entire workflows for you.",
+  "instructionFileName": "AGENTS.md",
+  "instructionLocalFileName": "AGENTS.local.md",
+  "legacyInstructionFileNames": [],
+  "configDirName": ".claude",
+  "projectSettingsDir": ".claude",
+  "release": {
+    "binaryRepoUrl": "https://github.com/Appsynergy-io/code/releases/download/release-index",
+    "channels": ["latest", "stable", "nightly"],
+    "nativePackageUrl": "@appsynergy/code"
+  },
+  "runtime": {
+    "contextTokensEnv": "CLAUDE_CODE_MAX_CONTEXT_TOKENS"
+  }
+}
