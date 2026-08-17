@@ -18,7 +18,7 @@ PLATFORMS=(
 )
 
 usage() {
-  echo "Usage: build/package.sh [--all | --checksums | os arch]" >&2
+  echo "Usage: build/package.sh [--all | --checksums | --release-assets [dir] | os arch]" >&2
   exit 2
 }
 
@@ -94,7 +94,51 @@ write_checksums() {
     exit 1
   fi
   mv "$tmp" "${DIST}/checksums.txt"
+  # Per-platform copy so CI can upload one cell and still validate checksums.
+  for platform in "${PLATFORMS[@]}"; do
+    if [[ -d "${DIST}/${platform}" ]]; then
+      cp "${DIST}/checksums.txt" "${DIST}/${platform}/checksums.txt"
+    fi
+  done
   echo "wrote ${DIST}/checksums.txt"
+}
+
+# Flattened names GitHub Release assets actually store (no '/').
+# Leaves dist/checksums.txt (platform/bin) for publish-index.
+write_release_assets() {
+  local dest="${1:-}"
+  if [[ -z "$dest" ]]; then
+    dest="$ROOT/release-assets"
+  fi
+  mkdir -p "$dest"
+  rm -f "${dest}/checksums.txt"
+  local platform os bin src name count=0
+  for platform in "${PLATFORMS[@]}"; do
+    os="${platform%%-*}"
+    bin="$(binary_name "$os")"
+    src="${DIST}/${platform}/${bin}"
+    if [[ -f "$src" ]]; then
+      name="${platform}-${bin}"
+      cp "$src" "${dest}/${name}"
+      count=$((count + 1))
+    fi
+  done
+  if [[ "$count" -eq 0 ]]; then
+    echo "no flattened binaries under ${dest}" >&2
+    exit 1
+  fi
+  local tmp
+  tmp="$(mktemp)"
+  for platform in "${PLATFORMS[@]}"; do
+    os="${platform%%-*}"
+    bin="$(binary_name "$os")"
+    name="${platform}-${bin}"
+    if [[ -f "${dest}/${name}" ]]; then
+      (cd "$dest" && shasum -a 256 "$name")
+    fi
+  done >"$tmp"
+  mv "$tmp" "${dest}/checksums.txt"
+  echo "wrote ${dest}/checksums.txt"
 }
 
 package_all() {
@@ -117,6 +161,8 @@ if [[ $# -eq 0 || "${1:-}" == --all ]]; then
   package_all
 elif [[ "${1:-}" == --checksums ]]; then
   write_checksums
+elif [[ "${1:-}" == --release-assets ]]; then
+  write_release_assets "${2:-}"
 elif [[ $# -eq 2 ]]; then
   package_one "$1" "$2"
   write_checksums

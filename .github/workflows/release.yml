@@ -1,11 +1,17 @@
 name: Release
 
-# Tag-driven only. latest = newest vX.Y.Z; stable = that same non-prerelease
-# (tagging vX.Y.Z is the promotion); nightly = vX.Y.Z-nightly.N.
+# Tag vX.Y.Z → latest. Tag vX.Y.Z-nightly.N → nightly.
+# stable moves only via workflow_dispatch (promote).
 on:
   push:
     tags:
       - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to promote to stable (no v prefix)'
+        required: true
+        type: string
 
 concurrency:
   group: release-${{ github.ref }}
@@ -19,6 +25,7 @@ env:
 
 jobs:
   validate-tag:
+    if: github.event_name == 'push'
     runs-on: ubuntu-24.04
     outputs:
       version: ${{ steps.tag.outputs.version }}
@@ -54,12 +61,13 @@ jobs:
               exit 1
             fi
             echo "prerelease=false" >> "$GITHUB_OUTPUT"
-            echo "channels=latest,stable" >> "$GITHUB_OUTPUT"
+            echo "channels=latest" >> "$GITHUB_OUTPUT"
           fi
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
           echo "validated ${TAG} → ${VERSION} (package.json ${PKG})"
 
   test:
+    if: github.event_name == 'push'
     needs: validate-tag
     runs-on: ubuntu-24.04
     steps:
@@ -71,6 +79,7 @@ jobs:
       - run: bash scripts/check.sh typecheck unit integration context-management task-recovery sub-agent
 
   build:
+    if: github.event_name == 'push'
     needs: test
     runs-on: ubuntu-24.04
     steps:
@@ -87,6 +96,7 @@ jobs:
           if-no-files-found: error
 
   package:
+    if: github.event_name == 'push'
     needs: build
     strategy:
       fail-fast: false
@@ -113,6 +123,7 @@ jobs:
           if-no-files-found: error
 
   publish:
+    if: github.event_name == 'push'
     needs: [validate-tag, package]
     runs-on: ubuntu-24.04
     permissions:
@@ -147,17 +158,10 @@ jobs:
       - name: GitHub Release
         run: |
           set -euo pipefail
-          mkdir -p release-assets
-          cp dist/checksums.txt release-assets/
-          for dir in dist/*/; do
-            platform="$(basename "$dir")"
-            if [[ -f "${dir}claude" ]]; then
-              cp "${dir}claude" "release-assets/${platform}-claude"
-            fi
-            if [[ -f "${dir}claude.exe" ]]; then
-              cp "${dir}claude.exe" "release-assets/${platform}-claude.exe"
-            fi
-          done
+          # Flattened names + matching checksums.txt (GitHub forbids '/' in assets).
+          # dist/checksums.txt stays path-layout for publish-index.
+          bash build/package.sh --release-assets ./release-assets
+          (cd release-assets && shasum -c checksums.txt)
           extra=()
           if [[ "$PRERELEASE" == true ]]; then
             extra+=(--prerelease)
@@ -176,3 +180,33 @@ jobs:
             --version "$VERSION" \
             --artifacts ./dist \
             --channels "$CHANNELS"
+
+  promote-stable:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+      - run: bun install --ignore-scripts
+      - name: Promote stable pointer
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          VERSION="${INPUT_VERSION#v}"
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "stable promote must be X.Y.Z, got: ${INPUT_VERSION}" >&2
+            exit 1
+          fi
+          if ! gh release view "v${VERSION}" >/dev/null 2>&1; then
+            echo "no GitHub Release for v${VERSION}; publish that tag first" >&2
+            exit 1
+          fi
+          bun release/publish-index.ts --version "$VERSION" --channel stable

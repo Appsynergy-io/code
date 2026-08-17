@@ -163,18 +163,24 @@ validate_one() {
     echo "missing vendor audio-capture for ${platform}" >&2
     return 1
   fi
-  if [[ -f "${DIST}/checksums.txt" ]]; then
-    local expected actual
-    expected="$(awk -v key="${platform}/${bin}" '$2 == key { print $1; exit }' "${DIST}/checksums.txt")"
-    if [[ -z "$expected" ]]; then
-      echo "checksums.txt has no entry for ${platform}/${bin}" >&2
-      return 1
-    fi
-    actual="$(shasum -a 256 "$path" | awk '{ print $1 }')"
-    if [[ "$actual" != "$expected" ]]; then
-      echo "checksum mismatch for ${platform}/${bin}: ${actual} != ${expected}" >&2
-      return 1
-    fi
+  local sums="${DIST}/checksums.txt"
+  if [[ ! -f "$sums" && -f "${DIST}/${platform}/checksums.txt" ]]; then
+    sums="${DIST}/${platform}/checksums.txt"
+  fi
+  if [[ ! -f "$sums" ]]; then
+    echo "missing checksums.txt for ${platform}" >&2
+    return 1
+  fi
+  local expected actual
+  expected="$(awk -v key="${platform}/${bin}" '$2 == key { print $1; exit }' "$sums")"
+  if [[ -z "$expected" ]]; then
+    echo "checksums.txt has no entry for ${platform}/${bin}" >&2
+    return 1
+  fi
+  actual="$(shasum -a 256 "$path" | awk '{ print $1 }')"
+  if [[ "$actual" != "$expected" ]]; then
+    echo "checksum mismatch for ${platform}/${bin}: ${actual} != ${expected}" >&2
+    return 1
   fi
   echo "ok ${platform}/${bin} ($(wc -c <"$path" | tr -d ' ') bytes)"
 }
