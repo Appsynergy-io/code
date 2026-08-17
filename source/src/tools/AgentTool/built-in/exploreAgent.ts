@@ -8,6 +8,7 @@ import { GREP_TOOL_NAME } from 'src/tools/GrepTool/prompt.js'
 import { NOTEBOOK_EDIT_TOOL_NAME } from 'src/tools/NotebookEditTool/constants.js'
 import { hasEmbeddedSearchTools } from 'src/utils/embeddedTools.js'
 import { AGENT_TOOL_NAME } from '../constants.js'
+import { EXPLORE_OMIT_CLAUDE_MD } from '../omitClaudeMd.js'
 import type { BuiltInAgentDefinition } from '../loadAgentsDir.js'
 
 function getExploreSystemPrompt(): string {
@@ -78,6 +79,6 @@ export const EXPLORE_AGENT: BuiltInAgentDefinition = {
   model: process.env.USER_TYPE === 'ant' ? 'inherit' : 'haiku',
   // Explore is a fast read-only search agent — it doesn't need commit/PR/lint
   // rules from CLAUDE.md. The main agent has full context and interprets results.
-  omitClaudeMd: true,
+  omitClaudeMd: EXPLORE_OMIT_CLAUDE_MD,
   getSystemPrompt: () => getExploreSystemPrompt(),
 }

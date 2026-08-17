@@ -61,9 +61,3 @@ export async function loadInstructionFilesFromTree(
   }
   return loaded
 }
-
-export function agentInheritsInstructionFiles(agent: {
-  omitClaudeMd?: boolean
-}): boolean {
-  return !agent.omitClaudeMd
-}
