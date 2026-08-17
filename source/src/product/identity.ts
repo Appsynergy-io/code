@@ -6,6 +6,7 @@ export type ProductReleaseConfig = {
   binaryRepoUrl: string
   channels: ProductReleaseChannel[]
   nativePackageUrl?: string
+  minVersion?: string
 }
 
 export type ProductRuntimeConfig = {
@@ -66,6 +67,7 @@ export const configDirName = product.configDirName
 export const projectSettingsDir = product.projectSettingsDir
 export const binaryRepoUrl = product.release.binaryRepoUrl
 export const releaseChannels = product.release.channels
+export const releaseMinVersion = product.release.minVersion
 export const contextTokensEnv = product.runtime.contextTokensEnv
 export const maxConcurrentAgents = product.runtime.maxConcurrentAgents
 export const productConfig = product

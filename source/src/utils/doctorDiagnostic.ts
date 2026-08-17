@@ -214,11 +214,8 @@ async function detectMultipleInstallations(): Promise<
     installations.push({ type: 'npm-local', path: localPath })
   }
 
-  // Check for global npm installation
-  const packagesToCheck = ['@anthropic-ai/claude-code']
-  if (MACRO.PACKAGE_URL && MACRO.PACKAGE_URL !== '@anthropic-ai/claude-code') {
-    packagesToCheck.push(MACRO.PACKAGE_URL)
-  }
+  // Check for global npm installation of the configured package
+  const packagesToCheck = MACRO.PACKAGE_URL ? [MACRO.PACKAGE_URL] : []
   const npmResult = await execFileNoThrow('npm', [
     '-g',
     'config',
@@ -536,13 +533,7 @@ export async function getDoctorDiagnostic(): Promise<DiagnosticInfo> {
 
     for (const install of npmInstalls) {
       if (install.type === 'npm-global') {
-        let uninstallCmd = 'npm -g uninstall @anthropic-ai/claude-code'
-        if (
-          MACRO.PACKAGE_URL &&
-          MACRO.PACKAGE_URL !== '@anthropic-ai/claude-code'
-        ) {
-          uninstallCmd += ` && npm -g uninstall ${MACRO.PACKAGE_URL}`
-        }
+        const uninstallCmd = `npm -g uninstall ${MACRO.PACKAGE_URL}`
         warnings.push({
           issue: `Leftover npm global installation at ${install.path}`,
           fix: `Run: ${uninstallCmd}`,

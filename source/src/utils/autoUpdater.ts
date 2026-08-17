@@ -8,6 +8,7 @@ import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
 } from 'src/services/analytics/index.js'
+import { binaryRepoUrl, releaseMinVersion } from '../product/identity.js'
 import { type ReleaseChannel, saveGlobalConfig } from './config.js'
 import { logForDebugging } from './debug.js'
 import { env } from './env.js'
@@ -26,9 +27,6 @@ import {
   writeFileLines,
 } from './shellConfig.js'
 import { jsonParse } from './slowOperations.js'
-
-const GCS_BUCKET_URL =
-  'https://storage.googleapis.com/claude-code-dist-86c565f3-f756-42ad-8dfa-d59b1c096819/claude-code-releases'
 
 class AutoUpdaterError extends ClaudeError {}
 
@@ -52,7 +50,8 @@ export type MaxVersionConfig = {
 }
 
 /**
- * Checks if the current version meets the minimum required version from Statsig config
+ * Checks if the current version meets the minimum required version from
+ * product config or the binary-repo release manifest.
  * Terminates the process with an error message if the version is too old
  *
  * NOTE ON SHA-BASED VERSIONING:
@@ -73,18 +72,13 @@ export async function assertMinVersion(): Promise<void> {
   }
 
   try {
-    const versionConfig = await getDynamicConfig_BLOCKS_ON_INIT<{
-      minVersion: string
-    }>('tengu_version_config', { minVersion: '0.0.0' })
+    const minVersion = await resolveMinVersion()
 
-    if (
-      versionConfig.minVersion &&
-      lt(MACRO.VERSION, versionConfig.minVersion)
-    ) {
+    if (minVersion && lt(MACRO.VERSION, minVersion)) {
       // biome-ignore lint/suspicious/noConsole:: intentional console output
       console.error(`
 It looks like your version of Claude Code (${MACRO.VERSION}) needs an update.
-A newer version (${versionConfig.minVersion} or higher) is required to continue.
+A newer version (${minVersion} or higher) is required to continue.
 
 To update, please run:
     claude update
@@ -95,6 +89,32 @@ This will ensure you have access to the latest features and improvements.
     }
   } catch (error) {
     logError(error as Error)
+  }
+}
+
+/**
+ * Product config wins; otherwise the latest channel's manifest.json minVersion.
+ */
+async function resolveMinVersion(): Promise<string | undefined> {
+  if (releaseMinVersion) {
+    return releaseMinVersion
+  }
+
+  try {
+    const latest = await getLatestVersionFromGcs('latest')
+    if (!latest) {
+      return undefined
+    }
+    const response = await axios.get(`${binaryRepoUrl}/${latest}/manifest.json`, {
+      timeout: 5000,
+      responseType: 'json',
+    })
+    const min = (response.data as { minVersion?: unknown } | undefined)
+      ?.minVersion
+    return typeof min === 'string' && min.length > 0 ? min : undefined
+  } catch (error) {
+    logForDebugging(`Failed to read min version from release metadata: ${error}`)
+    return undefined
   }
 }
 
@@ -319,7 +339,7 @@ export async function checkGlobalInstallPermissions(): Promise<{
 export async function getLatestVersion(
   channel: ReleaseChannel,
 ): Promise<string | null> {
-  const npmTag = channel === 'stable' ? 'stable' : 'latest'
+  const npmTag = channel
 
   // Run from home directory to avoid reading project-level .npmrc
   // which could be maliciously crafted to redirect to an attacker's registry
@@ -346,6 +366,7 @@ export async function getLatestVersion(
 export type NpmDistTags = {
   latest: string | null
   stable: string | null
+  nightly?: string | null
 }
 
 /**
@@ -362,7 +383,7 @@ export async function getNpmDistTags(): Promise<NpmDistTags> {
 
   if (result.code !== 0) {
     logForDebugging(`npm view dist-tags failed with code ${result.code}`)
-    return { latest: null, stable: null }
+    return { latest: null, stable: null, nightly: null }
   }
 
   try {
@@ -370,43 +391,46 @@ export async function getNpmDistTags(): Promise<NpmDistTags> {
     return {
       latest: typeof parsed.latest === 'string' ? parsed.latest : null,
       stable: typeof parsed.stable === 'string' ? parsed.stable : null,
+      nightly: typeof parsed.nightly === 'string' ? parsed.nightly : null,
     }
   } catch (error) {
     logForDebugging(`Failed to parse dist-tags: ${error}`)
-    return { latest: null, stable: null }
+    return { latest: null, stable: null, nightly: null }
   }
 }
 
 /**
- * Get the latest version from GCS bucket for a given release channel.
+ * Get the latest version from the configured binary repo for a given
+ * release channel (latest / stable / nightly pointer files).
  * This is used by installations that don't have npm (e.g. package manager installs).
  */
 export async function getLatestVersionFromGcs(
   channel: ReleaseChannel,
 ): Promise<string | null> {
   try {
-    const response = await axios.get(`${GCS_BUCKET_URL}/${channel}`, {
+    const response = await axios.get(`${binaryRepoUrl}/${channel}`, {
       timeout: 5000,
       responseType: 'text',
     })
     return response.data.trim()
   } catch (error) {
-    logForDebugging(`Failed to fetch ${channel} from GCS: ${error}`)
+    logForDebugging(`Failed to fetch ${channel} from binary repo: ${error}`)
     return null
   }
 }
 
 /**
- * Get available versions from GCS bucket (for native installations).
- * Fetches both latest and stable channel pointers.
+ * Get available versions from the binary repo (for native installations).
+ * Fetches latest, stable, and nightly channel pointers.
  */
 export async function getGcsDistTags(): Promise<NpmDistTags> {
-  const [latest, stable] = await Promise.all([
+  const [latest, stable, nightly] = await Promise.all([
     getLatestVersionFromGcs('latest'),
     getLatestVersionFromGcs('stable'),
+    getLatestVersionFromGcs('nightly'),
   ])
 
-  return { latest, stable }
+  return { latest, stable, nightly }
 }
 
 /**
