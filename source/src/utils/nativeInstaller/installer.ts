@@ -61,7 +61,10 @@ import {
   getXDGDataHome,
   getXDGStateHome,
 } from '../xdg.js'
+import { getBinaryName } from './artifact.js'
 import { downloadVersion, getLatestVersion } from './download.js'
+
+export { getBinaryName } from './artifact.js'
 import {
   acquireProcessLifetimeLock,
   cleanupStaleLocks,
@@ -106,10 +109,6 @@ export function getPlatform(): string {
   }
 
   return `${os}-${arch}`
-}
-
-export function getBinaryName(platform: string): string {
-  return platform.startsWith('win32') ? 'claude.exe' : 'claude'
 }
 
 function getBaseDirectories() {
@@ -387,7 +386,7 @@ async function installVersionFromBinary(
   installPath: string,
 ) {
   try {
-    // For direct binary downloads (GCS, generic bucket), the binary is directly in staging
+    // For direct binary downloads the binary is directly in staging
     const platform = getPlatform()
     const binaryName = getBinaryName(platform)
     const stagedBinaryPath = join(stagingPath, binaryName)
@@ -1662,21 +1661,7 @@ export async function cleanupNpmInstallations(): Promise<{
   const warnings: string[] = []
   let removed = 0
 
-  // Always attempt to remove @anthropic-ai/claude-code
-  const codePackageResult = await attemptNpmUninstall(
-    '@anthropic-ai/claude-code',
-  )
-  if (codePackageResult.success) {
-    removed++
-    if (codePackageResult.warning) {
-      warnings.push(codePackageResult.warning)
-    }
-  } else if (codePackageResult.error) {
-    errors.push(codePackageResult.error)
-  }
-
-  // Also attempt to remove MACRO.PACKAGE_URL if it's defined and different
-  if (MACRO.PACKAGE_URL && MACRO.PACKAGE_URL !== '@anthropic-ai/claude-code') {
+  if (MACRO.PACKAGE_URL) {
     const macroPackageResult = await attemptNpmUninstall(MACRO.PACKAGE_URL)
     if (macroPackageResult.success) {
       removed++

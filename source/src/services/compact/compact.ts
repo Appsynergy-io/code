@@ -8,7 +8,7 @@ const sessionTranscriptModule = feature('KAIROS')
   : null
 
 import { APIUserAbortError } from '@anthropic-ai/sdk'
-import { markPostCompaction } from 'src/bootstrap/state.js'
+import { getSdkBetas, markPostCompaction } from 'src/bootstrap/state.js'
 import { getInvokedSkillsForAgent } from '../../bootstrap/state.js'
 import type { QuerySource } from '../../constants/querySource.js'
 import type { CanUseToolFn } from '../../hooks/useCanUseTool.js'
@@ -39,7 +39,10 @@ import {
   getMcpInstructionsDeltaAttachment,
 } from '../../utils/attachments.js'
 import { getMemoryPath } from '../../utils/config.js'
-import { COMPACT_MAX_OUTPUT_TOKENS } from '../../utils/context.js'
+import {
+  getCompactMaxOutputTokensForWindow,
+  getContextWindowForModel,
+} from '../../utils/context.js'
 import {
   analyzeContext,
   tokenStatsToStatsigMetrics,
@@ -82,6 +85,7 @@ import { jsonStringify } from '../../utils/slowOperations.js'
 /* eslint-enable @typescript-eslint/no-require-imports */
 import { asSystemPrompt } from '../../utils/systemPromptType.js'
 import { getTaskOutputPath } from '../../utils/task/diskOutput.js'
+import { persistTaskStateFromAppState } from '../../utils/task/taskState.js'
 import {
   getTokenUsage,
   tokenCountFromLastAPIResponse,
@@ -710,6 +714,10 @@ export async function compactConversation(
     // instead of the user-set session name.
     reAppendSessionMetadata()
 
+    // Deterministic sidecar update — no extra LLM call. Resume reads this
+    // first so task graph state survives the summarized transcript.
+    await persistTaskStateFromAppState(context.getAppState().tasks)
+
     // Write a reduced transcript segment for the pre-compaction messages
     // (assistant mode only). Fire-and-forget — errors are logged internally.
     if (feature('KAIROS')) {
@@ -1056,6 +1064,8 @@ export async function partialCompactConversation(
     // the 16KB tail window that readLiteMetadata reads for --resume display.
     reAppendSessionMetadata()
 
+    await persistTaskStateFromAppState(context.getAppState().tasks)
+
     if (feature('KAIROS')) {
       void sessionTranscriptModule?.writeSessionTranscriptSegment(
         messagesToSummarize,
@@ -1314,8 +1324,11 @@ async function streamCompactSummary({
           toolChoice: undefined,
           isNonInteractiveSession: context.options.isNonInteractiveSession,
           hasAppendSystemPrompt: !!context.options.appendSystemPrompt,
-          maxOutputTokensOverride: Math.min(
-            COMPACT_MAX_OUTPUT_TOKENS,
+          maxOutputTokensOverride: getCompactMaxOutputTokensForWindow(
+            getContextWindowForModel(
+              context.options.mainLoopModel,
+              getSdkBetas(),
+            ),
             getMaxOutputTokensForModel(context.options.mainLoopModel),
           ),
           querySource: 'compact',

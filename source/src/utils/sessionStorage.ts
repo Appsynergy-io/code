@@ -204,6 +204,13 @@ export function getTranscriptPath(): string {
   return join(projectDir, `${getSessionId()}.jsonl`)
 }
 
+/** Sibling of the session transcript: `{sessionId}.task-state.json`. */
+export function getTaskStatePath(transcriptPath?: string): string {
+  const { getTaskStatePath: pathFromTranscript } =
+    require('./task/taskPersist.js') as typeof import('./task/taskPersist.js')
+  return pathFromTranscript(transcriptPath ?? getTranscriptPath())
+}
+
 export function getTranscriptPathForSession(sessionId: string): string {
   // When asking for the CURRENT session's transcript, honor sessionProjectDir
   // the same way getTranscriptPath() does. Without this, hooks get a
@@ -3518,6 +3525,13 @@ export async function loadTranscriptFile(
   let contextCollapseSnapshot: ContextCollapseSnapshotEntry | undefined
 
   try {
+    // Resume reads durable task-state.json first (sibling of this transcript).
+    /* eslint-disable @typescript-eslint/no-require-imports */
+    await (
+      require('./task/taskState.js') as typeof import('./task/taskState.js')
+    ).loadTaskStateForResume(filePath)
+    /* eslint-enable @typescript-eslint/no-require-imports */
+
     // For large transcripts, avoid materializing megabytes of stale content.
     // Single forward chunked read: attribution-snapshot lines are skipped at
     // the fd level (never buffered), compact boundaries truncate the

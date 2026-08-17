@@ -6,10 +6,16 @@ import { logForDebugging } from '../utils/debug.js'
 import { isEnvDefinedFalsy } from '../utils/envUtils.js'
 import { getAPIProvider } from '../utils/model/providers.js'
 import { getWorkload } from '../utils/workloadContext.js'
+import {
+  agentSdkPrefix,
+  agentSdkProductPrefix,
+  getAliasedEnv,
+  syspromptPrefix,
+} from '../product/identity.js'
 
-const DEFAULT_PREFIX = `You are Claude Code, Anthropic's official CLI for Claude.`
-const AGENT_SDK_CLAUDE_CODE_PRESET_PREFIX = `You are Claude Code, Anthropic's official CLI for Claude, running within the Claude Agent SDK.`
-const AGENT_SDK_PREFIX = `You are a Claude agent, built on Anthropic's Claude Agent SDK.`
+const DEFAULT_PREFIX = syspromptPrefix
+const AGENT_SDK_CLAUDE_CODE_PRESET_PREFIX = agentSdkProductPrefix
+const AGENT_SDK_PREFIX = agentSdkPrefix
 
 const CLI_SYSPROMPT_PREFIX_VALUES = [
   DEFAULT_PREFIX,
@@ -50,7 +56,7 @@ export function getCLISyspromptPrefix(options?: {
  * Enabled by default, can be disabled via env var or GrowthBook killswitch.
  */
 function isAttributionHeaderEnabled(): boolean {
-  if (isEnvDefinedFalsy(process.env.CLAUDE_CODE_ATTRIBUTION_HEADER)) {
+  if (isEnvDefinedFalsy(getAliasedEnv('CLAUDE_CODE_ATTRIBUTION_HEADER'))) {
     return false
   }
   return getFeatureValue_CACHED_MAY_BE_STALE('tengu_attribution_header', true)
@@ -76,7 +82,7 @@ export function getAttributionHeader(fingerprint: string): string {
   }
 
   const version = `${MACRO.VERSION}.${fingerprint}`
-  const entrypoint = process.env.CLAUDE_CODE_ENTRYPOINT ?? 'unknown'
+  const entrypoint = getAliasedEnv('CLAUDE_CODE_ENTRYPOINT') ?? 'unknown'
 
   // cch=00000 placeholder is overwritten by Bun's HTTP stack with attestation token
   const cch = feature('NATIVE_CLIENT_ATTESTATION') ? ' cch=00000;' : ''

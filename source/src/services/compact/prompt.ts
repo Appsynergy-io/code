@@ -28,32 +28,36 @@ const NO_TOOLS_PREAMBLE = `CRITICAL: Respond with TEXT ONLY. Do NOT call any too
 // Two variants: BASE scopes to "the conversation", PARTIAL scopes to "the
 // recent messages". The <analysis> block is a drafting scratchpad that
 // formatCompactSummary() strips before the summary reaches context.
-const DETAILED_ANALYSIS_INSTRUCTION_BASE = `Before providing your final summary, wrap your analysis in <analysis> tags to organize your thoughts and ensure you've covered all necessary points. In your analysis process:
+const RETENTION_CLASS_LEGEND = `Retention classes (apply to every section below):
+- durable: must survive compaction in substance — user intent, pending work, errors/feedback, current state
+- compressible: may be condensed — narrative, concepts, problem-solving history
+- discardable: omit — analysis scratchpad, ephemeral UI, images already stripped
+- reconstructable: record identifiers/paths only; file contents and tool schemas can be re-read from disk`
+
+const DETAILED_ANALYSIS_INSTRUCTION_BASE = `Before providing your final summary, wrap your analysis in <analysis> tags to organize your thoughts and ensure you've covered all necessary points. The <analysis> block is discardable and will be stripped. In your analysis process:
 
 1. Chronologically analyze each message and section of the conversation. For each section thoroughly identify:
    - The user's explicit requests and intents
    - Your approach to addressing the user's requests
    - Key decisions, technical concepts and code patterns
    - Specific details like:
-     - file names
-     - full code snippets
-     - function signatures
-     - file edits
+     - file names and paths
+     - symbol / function signatures (not file bodies)
+     - file edits (what changed, not the full contents)
    - Errors that you ran into and how you fixed them
    - Pay special attention to specific user feedback that you received, especially if the user told you to do something differently.
 2. Double-check for technical accuracy and completeness, addressing each required element thoroughly.`
 
-const DETAILED_ANALYSIS_INSTRUCTION_PARTIAL = `Before providing your final summary, wrap your analysis in <analysis> tags to organize your thoughts and ensure you've covered all necessary points. In your analysis process:
+const DETAILED_ANALYSIS_INSTRUCTION_PARTIAL = `Before providing your final summary, wrap your analysis in <analysis> tags to organize your thoughts and ensure you've covered all necessary points. The <analysis> block is discardable and will be stripped. In your analysis process:
 
 1. Analyze the recent messages chronologically. For each section thoroughly identify:
    - The user's explicit requests and intents
    - Your approach to addressing the user's requests
    - Key decisions, technical concepts and code patterns
    - Specific details like:
-     - file names
-     - full code snippets
-     - function signatures
-     - file edits
+     - file names and paths
+     - symbol / function signatures (not file bodies)
+     - file edits (what changed, not the full contents)
    - Errors that you ran into and how you fixed them
    - Pay special attention to specific user feedback that you received, especially if the user told you to do something differently.
 2. Double-check for technical accuracy and completeness, addressing each required element thoroughly.`
@@ -63,17 +67,19 @@ This summary should be thorough in capturing technical details, code patterns, a
 
 ${DETAILED_ANALYSIS_INSTRUCTION_BASE}
 
+${RETENTION_CLASS_LEGEND}
+
 Your summary should include the following sections:
 
-1. Primary Request and Intent: Capture all of the user's explicit requests and intents in detail
-2. Key Technical Concepts: List all important technical concepts, technologies, and frameworks discussed.
-3. Files and Code Sections: Enumerate specific files and code sections examined, modified, or created. Pay special attention to the most recent messages and include full code snippets where applicable and include a summary of why this file read or edit is important.
-4. Errors and fixes: List all errors that you ran into, and how you fixed them. Pay special attention to specific user feedback that you received, especially if the user told you to do something differently.
-5. Problem Solving: Document problems solved and any ongoing troubleshooting efforts.
-6. All user messages: List ALL user messages that are not tool results. These are critical for understanding the users' feedback and changing intent.
-7. Pending Tasks: Outline any pending tasks that you have explicitly been asked to work on.
-8. Current Work: Describe in detail precisely what was being worked on immediately before this summary request, paying special attention to the most recent messages from both user and assistant. Include file names and code snippets where applicable.
-9. Optional Next Step: List the next step that you will take that is related to the most recent work you were doing. IMPORTANT: ensure that this step is DIRECTLY in line with the user's most recent explicit requests, and the task you were working on immediately before this summary request. If your last task was concluded, then only list next steps if they are explicitly in line with the users request. Do not start on tangential requests or really old requests that were already completed without confirming with the user first.
+1. Primary Request and Intent [durable]: Capture all of the user's explicit requests and intents in detail
+2. Key Technical Concepts [compressible]: List all important technical concepts, technologies, and frameworks discussed.
+3. Files and Code Sections [reconstructable]: Enumerate specific files and code sections examined, modified, or created. Record paths, symbols, and why the file matters — do not copy file bodies or full code snippets.
+4. Errors and fixes [durable]: List all errors that you ran into, and how you fixed them. Pay special attention to specific user feedback that you received, especially if the user told you to do something differently.
+5. Problem Solving [compressible]: Document problems solved and any ongoing troubleshooting efforts.
+6. All user messages [durable]: List ALL user messages that are not tool results. These are critical for understanding the users' feedback and changing intent.
+7. Pending Tasks [durable]: Outline any pending tasks that you have explicitly been asked to work on.
+8. Current Work [durable]: Describe in detail precisely what was being worked on immediately before this summary request, paying special attention to the most recent messages from both user and assistant. Include file names and symbols; do not copy file bodies.
+9. Optional Next Step [durable]: List the next step that you will take that is related to the most recent work you were doing. IMPORTANT: ensure that this step is DIRECTLY in line with the user's most recent explicit requests, and the task you were working on immediately before this summary request. If your last task was concluded, then only list next steps if they are explicitly in line with the users request. Do not start on tangential requests or really old requests that were already completed without confirming with the user first.
                        If there is a next step, include direct quotes from the most recent conversation showing exactly what task you were working on and where you left off. This should be verbatim to ensure there's no drift in task interpretation.
 
 Here's an example of how your output should be structured:
@@ -84,45 +90,45 @@ Here's an example of how your output should be structured:
 </analysis>
 
 <summary>
-1. Primary Request and Intent:
+1. Primary Request and Intent [durable]:
    [Detailed description]
 
-2. Key Technical Concepts:
+2. Key Technical Concepts [compressible]:
    - [Concept 1]
    - [Concept 2]
    - [...]
 
-3. Files and Code Sections:
+3. Files and Code Sections [reconstructable]:
    - [File Name 1]
       - [Summary of why this file is important]
       - [Summary of the changes made to this file, if any]
-      - [Important Code Snippet]
+      - [Symbols / signatures only]
    - [File Name 2]
-      - [Important Code Snippet]
+      - [Why it matters]
    - [...]
 
-4. Errors and fixes:
+4. Errors and fixes [durable]:
     - [Detailed description of error 1]:
       - [How you fixed the error]
       - [User feedback on the error if any]
     - [...]
 
-5. Problem Solving:
+5. Problem Solving [compressible]:
    [Description of solved problems and ongoing troubleshooting]
 
-6. All user messages: 
+6. All user messages [durable]:
     - [Detailed non tool use user message]
     - [...]
 
-7. Pending Tasks:
+7. Pending Tasks [durable]:
    - [Task 1]
    - [Task 2]
    - [...]
 
-8. Current Work:
+8. Current Work [durable]:
    [Precise description of current work]
 
-9. Optional Next Step:
+9. Optional Next Step [durable]:
    [Optional Next step to take]
 
 </summary>
@@ -146,17 +152,19 @@ const PARTIAL_COMPACT_PROMPT = `Your task is to create a detailed summary of the
 
 ${DETAILED_ANALYSIS_INSTRUCTION_PARTIAL}
 
+${RETENTION_CLASS_LEGEND}
+
 Your summary should include the following sections:
 
-1. Primary Request and Intent: Capture the user's explicit requests and intents from the recent messages
-2. Key Technical Concepts: List important technical concepts, technologies, and frameworks discussed recently.
-3. Files and Code Sections: Enumerate specific files and code sections examined, modified, or created. Include full code snippets where applicable and include a summary of why this file read or edit is important.
-4. Errors and fixes: List errors encountered and how they were fixed.
-5. Problem Solving: Document problems solved and any ongoing troubleshooting efforts.
-6. All user messages: List ALL user messages from the recent portion that are not tool results.
-7. Pending Tasks: Outline any pending tasks from the recent messages.
-8. Current Work: Describe precisely what was being worked on immediately before this summary request.
-9. Optional Next Step: List the next step related to the most recent work. Include direct quotes from the most recent conversation.
+1. Primary Request and Intent [durable]: Capture the user's explicit requests and intents from the recent messages
+2. Key Technical Concepts [compressible]: List important technical concepts, technologies, and frameworks discussed recently.
+3. Files and Code Sections [reconstructable]: Enumerate specific files and code sections examined, modified, or created. Record paths, symbols, and why the file matters — do not copy file bodies or full code snippets.
+4. Errors and fixes [durable]: List errors encountered and how they were fixed.
+5. Problem Solving [compressible]: Document problems solved and any ongoing troubleshooting efforts.
+6. All user messages [durable]: List ALL user messages from the recent portion that are not tool results.
+7. Pending Tasks [durable]: Outline any pending tasks from the recent messages.
+8. Current Work [durable]: Describe precisely what was being worked on immediately before this summary request.
+9. Optional Next Step [durable]: List the next step related to the most recent work. Include direct quotes from the most recent conversation.
 
 Here's an example of how your output should be structured:
 
@@ -166,35 +174,35 @@ Here's an example of how your output should be structured:
 </analysis>
 
 <summary>
-1. Primary Request and Intent:
+1. Primary Request and Intent [durable]:
    [Detailed description]
 
-2. Key Technical Concepts:
+2. Key Technical Concepts [compressible]:
    - [Concept 1]
    - [Concept 2]
 
-3. Files and Code Sections:
+3. Files and Code Sections [reconstructable]:
    - [File Name 1]
       - [Summary of why this file is important]
-      - [Important Code Snippet]
+      - [Symbols / signatures only]
 
-4. Errors and fixes:
+4. Errors and fixes [durable]:
     - [Error description]:
       - [How you fixed it]
 
-5. Problem Solving:
+5. Problem Solving [compressible]:
    [Description]
 
-6. All user messages:
+6. All user messages [durable]:
     - [Detailed non tool use user message]
 
-7. Pending Tasks:
+7. Pending Tasks [durable]:
    - [Task 1]
 
-8. Current Work:
+8. Current Work [durable]:
    [Precise description of current work]
 
-9. Optional Next Step:
+9. Optional Next Step [durable]:
    [Optional Next step to take]
 
 </summary>
@@ -209,17 +217,19 @@ const PARTIAL_COMPACT_UP_TO_PROMPT = `Your task is to create a detailed summary 
 
 ${DETAILED_ANALYSIS_INSTRUCTION_BASE}
 
+${RETENTION_CLASS_LEGEND}
+
 Your summary should include the following sections:
 
-1. Primary Request and Intent: Capture the user's explicit requests and intents in detail
-2. Key Technical Concepts: List important technical concepts, technologies, and frameworks discussed.
-3. Files and Code Sections: Enumerate specific files and code sections examined, modified, or created. Include full code snippets where applicable and include a summary of why this file read or edit is important.
-4. Errors and fixes: List errors encountered and how they were fixed.
-5. Problem Solving: Document problems solved and any ongoing troubleshooting efforts.
-6. All user messages: List ALL user messages that are not tool results.
-7. Pending Tasks: Outline any pending tasks.
-8. Work Completed: Describe what was accomplished by the end of this portion.
-9. Context for Continuing Work: Summarize any context, decisions, or state that would be needed to understand and continue the work in subsequent messages.
+1. Primary Request and Intent [durable]: Capture the user's explicit requests and intents in detail
+2. Key Technical Concepts [compressible]: List important technical concepts, technologies, and frameworks discussed.
+3. Files and Code Sections [reconstructable]: Enumerate specific files and code sections examined, modified, or created. Record paths, symbols, and why the file matters — do not copy file bodies or full code snippets.
+4. Errors and fixes [durable]: List errors encountered and how they were fixed.
+5. Problem Solving [compressible]: Document problems solved and any ongoing troubleshooting efforts.
+6. All user messages [durable]: List ALL user messages that are not tool results.
+7. Pending Tasks [durable]: Outline any pending tasks.
+8. Work Completed [compressible]: Describe what was accomplished by the end of this portion.
+9. Context for Continuing Work [durable]: Summarize any context, decisions, or state that would be needed to understand and continue the work in subsequent messages.
 
 Here's an example of how your output should be structured:
 
@@ -229,35 +239,35 @@ Here's an example of how your output should be structured:
 </analysis>
 
 <summary>
-1. Primary Request and Intent:
+1. Primary Request and Intent [durable]:
    [Detailed description]
 
-2. Key Technical Concepts:
+2. Key Technical Concepts [compressible]:
    - [Concept 1]
    - [Concept 2]
 
-3. Files and Code Sections:
+3. Files and Code Sections [reconstructable]:
    - [File Name 1]
       - [Summary of why this file is important]
-      - [Important Code Snippet]
+      - [Symbols / signatures only]
 
-4. Errors and fixes:
+4. Errors and fixes [durable]:
     - [Error description]:
       - [How you fixed it]
 
-5. Problem Solving:
+5. Problem Solving [compressible]:
    [Description]
 
-6. All user messages:
+6. All user messages [durable]:
     - [Detailed non tool use user message]
 
-7. Pending Tasks:
+7. Pending Tasks [durable]:
    - [Task 1]
 
-8. Work Completed:
+8. Work Completed [compressible]:
    [Description of what was accomplished]
 
-9. Context for Continuing Work:
+9. Context for Continuing Work [durable]:
    [Key context, decisions, or state needed to continue the work]
 
 </summary>

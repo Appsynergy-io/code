@@ -81,6 +81,8 @@ import type { ContentReplacementState } from '../../utils/toolResultStorage.js'
 import { createAgentId } from '../../utils/uuid.js'
 import { resolveAgentTools } from './agentToolUtils.js'
 import { type AgentDefinition, isBuiltInAgent } from './loadAgentsDir.js'
+import { shouldOmitClaudeMd } from './omitClaudeMd.js'
+import { initialSpawnMessages } from './spawnMessages.js'
 
 /**
  * Initialize agent-specific MCP servers
@@ -370,7 +372,11 @@ export async function* runAgent({
   const contextMessages: Message[] = forkContextMessages
     ? filterIncompleteToolCalls(forkContextMessages)
     : []
-  const initialMessages: Message[] = [...contextMessages, ...promptMessages]
+  const initialMessages: Message[] = initialSpawnMessages({
+    isForkPath: forkContextMessages !== undefined,
+    parentMessages: contextMessages,
+    promptMessages,
+  })
 
   const agentReadFileState =
     forkContextMessages !== undefined
@@ -387,13 +393,16 @@ export async function* runAgent({
   // Dropping claudeMd here saves ~5-15 Gtok/week across 34M+ Explore spawns.
   // Explicit override.userContext from callers is preserved untouched.
   // Kill-switch defaults true; flip tengu_slim_subagent_claudemd=false to revert.
-  const shouldOmitClaudeMd =
-    agentDefinition.omitClaudeMd &&
-    !override?.userContext &&
-    getFeatureValue_CACHED_MAY_BE_STALE('tengu_slim_subagent_claudemd', true)
+  const omitClaudeMd = shouldOmitClaudeMd(agentDefinition, {
+    hasUserContextOverride: Boolean(override?.userContext),
+    slimSubagentClaudeMd: getFeatureValue_CACHED_MAY_BE_STALE(
+      'tengu_slim_subagent_claudemd',
+      true,
+    ),
+  })
   const { claudeMd: _omittedClaudeMd, ...userContextNoClaudeMd } =
     baseUserContext
-  const resolvedUserContext = shouldOmitClaudeMd
+  const resolvedUserContext = omitClaudeMd
     ? userContextNoClaudeMd
     : baseUserContext
 

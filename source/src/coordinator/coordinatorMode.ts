@@ -14,6 +14,11 @@ import { SYNTHETIC_OUTPUT_TOOL_NAME } from '../tools/SyntheticOutputTool/Synthet
 import { TASK_STOP_TOOL_NAME } from '../tools/TaskStopTool/prompt.js'
 import { TEAM_CREATE_TOOL_NAME } from '../tools/TeamCreateTool/constants.js'
 import { TEAM_DELETE_TOOL_NAME } from '../tools/TeamDeleteTool/constants.js'
+import {
+  countRunningLocalAgents,
+  getAgentSchedule,
+  type AgentSchedule,
+} from '../utils/agentScheduler.js'
 import { isEnvTruthy } from '../utils/envUtils.js'
 
 // Checks the same gate as isScratchpadEnabled() in
@@ -38,6 +43,19 @@ export function isCoordinatorMode(): boolean {
     return isEnvTruthy(process.env.CLAUDE_CODE_COORDINATOR_MODE)
   }
   return false
+}
+
+/** Soft spawn slots from remaining context. No fixed architectural max. */
+export function getCoordinatorAgentSchedule(input: {
+  model: string
+  usedTokens: number
+  tasks: Record<string, { type: string; status: string }> | undefined
+}): AgentSchedule {
+  return getAgentSchedule({
+    model: input.model,
+    usedTokens: input.usedTokens,
+    runningLocalAgents: countRunningLocalAgents(input.tasks),
+  })
 }
 
 /**
@@ -211,6 +229,8 @@ Most tasks can be broken down into the following phases:
 ### Concurrency
 
 **Parallelism is your superpower. Workers are async. Launch independent workers concurrently whenever possible — don't serialize work that can run simultaneously and look for opportunities to fan out. When doing research, cover multiple angles. To launch workers in parallel, make multiple tool calls in a single message.**
+
+Spawn capacity is remaining context divided by a per-agent reserve — there is no fixed worker cap. If a spawn is refused, wait for a worker to finish, continue an existing worker via ${SEND_MESSAGE_TOOL_NAME}, or compact.
 
 Manage concurrency:
 - **Read-only tasks** (research) — run in parallel freely

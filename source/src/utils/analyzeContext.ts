@@ -10,10 +10,10 @@ import { getCommandName } from '../commands.js'
 import { getSystemContext } from '../context.js'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../services/analytics/growthbook.js'
 import {
-  AUTOCOMPACT_BUFFER_TOKENS,
+  getAutoCompactThreshold,
   getEffectiveContextWindowSize,
+  getManualCompactBufferTokens,
   isAutoCompactEnabled,
-  MANUAL_COMPACT_BUFFER_TOKENS,
 } from '../services/compact/autoCompact.js'
 import {
   countMessagesTokensWithAPI,
@@ -1001,7 +1001,7 @@ export async function analyzeContextUsage(
   // Check if autocompact is enabled and calculate threshold
   const isAutoCompact = isAutoCompactEnabled()
   const autoCompactThreshold = isAutoCompact
-    ? getEffectiveContextWindowSize(model) - AUTOCOMPACT_BUFFER_TOKENS
+    ? getAutoCompactThreshold(model)
     : undefined
 
   // Create categories
@@ -1137,8 +1137,8 @@ export async function analyzeContextUsage(
       color: 'inactive',
     })
   } else if (!isAutoCompact) {
-    // Compact buffer reserve (3k from actual context limit)
-    reservedTokens = MANUAL_COMPACT_BUFFER_TOKENS
+    // Compact buffer reserve (scaled from the 3k / 200k reference)
+    reservedTokens = getManualCompactBufferTokens(model)
     cats.push({
       name: MANUAL_COMPACT_BUFFER_NAME,
       tokens: reservedTokens,

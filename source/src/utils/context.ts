@@ -1,15 +1,28 @@
 // biome-ignore-all assist/source/organizeImports: ANT-ONLY import markers must not be reordered
 import { CONTEXT_1M_BETA_HEADER } from '../constants/betas.js'
+import { getContextWindowOverride } from '../product/identity.js'
 import { getGlobalConfig } from './config.js'
 import { isEnvTruthy } from './envUtils.js'
 import { getCanonicalName } from './model/model.js'
-import { getModelCapability } from './model/modelCapabilities.js'
+import {
+  getAdvertisedMaxInputTokens,
+  getModelCapability,
+} from './model/modelCapabilities.js'
+import {
+  COMPACT_MAX_OUTPUT_TOKENS,
+  getCompactMaxOutputTokensForWindow,
+  MODEL_CONTEXT_WINDOW_DEFAULT,
+  resolveContextWindow,
+  scaleTokensForContextWindow,
+} from './contextWindow.js'
 
-// Model context window size (200k tokens for all models right now)
-export const MODEL_CONTEXT_WINDOW_DEFAULT = 200_000
-
-// Maximum output tokens for compact operations
-export const COMPACT_MAX_OUTPUT_TOKENS = 20_000
+export {
+  COMPACT_MAX_OUTPUT_TOKENS,
+  getCompactMaxOutputTokensForWindow,
+  MODEL_CONTEXT_WINDOW_DEFAULT,
+  resolveContextWindow,
+  scaleTokensForContextWindow,
+}
 
 // Default max output tokens
 const MAX_OUTPUT_TOKENS_DEFAULT = 32_000
@@ -52,49 +65,24 @@ export function getContextWindowForModel(
   model: string,
   betas?: string[],
 ): number {
-  // Allow override via environment variable (ant-only)
-  // This takes precedence over all other context window resolution, including 1M detection,
-  // so users can cap the effective context window for local decisions (auto-compact, etc.)
-  // while still using a 1M-capable endpoint.
-  if (
-    process.env.USER_TYPE === 'ant' &&
-    process.env.CLAUDE_CODE_MAX_CONTEXT_TOKENS
-  ) {
-    const override = parseInt(process.env.CLAUDE_CODE_MAX_CONTEXT_TOKENS, 10)
-    if (!isNaN(override) && override > 0) {
-      return override
-    }
-  }
-
-  // [1m] suffix — explicit client-side opt-in, respected over all detection
-  if (has1mContext(model)) {
-    return 1_000_000
-  }
-
-  const cap = getModelCapability(model)
-  if (cap?.max_input_tokens && cap.max_input_tokens >= 100_000) {
-    if (
-      cap.max_input_tokens > MODEL_CONTEXT_WINDOW_DEFAULT &&
-      is1mContextDisabled()
-    ) {
-      return MODEL_CONTEXT_WINDOW_DEFAULT
-    }
-    return cap.max_input_tokens
-  }
-
-  if (betas?.includes(CONTEXT_1M_BETA_HEADER) && modelSupports1M(model)) {
-    return 1_000_000
-  }
-  if (getSonnet1mExpTreatmentEnabled(model)) {
-    return 1_000_000
-  }
-  if (process.env.USER_TYPE === 'ant') {
-    const antModel = resolveAntModel(model)
-    if (antModel?.contextWindow) {
-      return antModel.contextWindow
-    }
-  }
-  return MODEL_CONTEXT_WINDOW_DEFAULT
+  // Env override (CLAUDE_CODE_MAX_CONTEXT_TOKENS / CODE_MAX_CONTEXT_TOKENS)
+  // takes precedence over all other resolution, including 1M detection, so
+  // local models can set window size and users can cap a 1M-capable endpoint.
+  // No hardcoded ceiling — the parsed env value is the window.
+  return resolveContextWindow({
+    envOverride: getContextWindowOverride(),
+    has1mSuffix: has1mContext(model),
+    advertised: getAdvertisedMaxInputTokens(model),
+    disable1m: is1mContextDisabled(),
+    oneMViaBeta: Boolean(
+      betas?.includes(CONTEXT_1M_BETA_HEADER) && modelSupports1M(model),
+    ),
+    oneMViaExperiment: getSonnet1mExpTreatmentEnabled(model),
+    antContextWindow:
+      process.env.USER_TYPE === 'ant'
+        ? resolveAntModel(model)?.contextWindow
+        : undefined,
+  })
 }
 
 export function getSonnet1mExpTreatmentEnabled(model: string): boolean {

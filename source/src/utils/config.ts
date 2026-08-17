@@ -5,6 +5,11 @@ import memoize from 'lodash-es/memoize.js'
 import pickBy from 'lodash-es/pickBy.js'
 import { basename, dirname, join, resolve } from 'path'
 import { getOriginalCwd, getSessionTrustAccepted } from '../bootstrap/state.js'
+import {
+  instructionFileName,
+  instructionLocalFileName,
+  projectSettingsDir,
+} from '../product/identity.js'
 import { getAutoMemEntrypoint } from '../memdir/paths.js'
 import { logEvent } from '../services/analytics/index.js'
 import type { McpServerConfig } from '../services/mcp/types.js'
@@ -71,7 +76,7 @@ export interface HistoryEntry {
   pastedContents: Record<number, PastedContent>
 }
 
-export type ReleaseChannel = 'stable' | 'latest'
+export type ReleaseChannel = 'stable' | 'latest' | 'nightly'
 
 export type ProjectConfig = {
   allowedTools: string[]
@@ -1781,13 +1786,13 @@ export function getMemoryPath(memoryType: MemoryType): string {
 
   switch (memoryType) {
     case 'User':
-      return join(getClaudeConfigHomeDir(), 'CLAUDE.md')
+      return join(getClaudeConfigHomeDir(), instructionFileName)
     case 'Local':
-      return join(cwd, 'CLAUDE.local.md')
+      return join(cwd, instructionLocalFileName)
     case 'Project':
-      return join(cwd, 'CLAUDE.md')
+      return join(cwd, instructionFileName)
     case 'Managed':
-      return join(getManagedFilePath(), 'CLAUDE.md')
+      return join(getManagedFilePath(), instructionFileName)
     case 'AutoMem':
       return getAutoMemEntrypoint()
   }
@@ -1799,7 +1804,7 @@ export function getMemoryPath(memoryType: MemoryType): string {
 }
 
 export function getManagedClaudeRulesDir(): string {
-  return join(getManagedFilePath(), '.claude', 'rules')
+  return join(getManagedFilePath(), projectSettingsDir, 'rules')
 }
 
 export function getUserClaudeRulesDir(): string {

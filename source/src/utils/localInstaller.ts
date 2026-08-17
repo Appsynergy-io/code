@@ -91,7 +91,7 @@ export async function ensureLocalPackageEnvironment(): Promise<boolean> {
 
 /**
  * Install or update Claude CLI package in the local directory
- * @param channel - Release channel to use (latest or stable)
+ * @param channel - Release channel to use (latest, stable, or nightly)
  * @param specificVersion - Optional specific version to install (overrides channel)
  */
 export async function installOrUpdateClaudePackage(
@@ -105,11 +105,7 @@ export async function installOrUpdateClaudePackage(
     }
 
     // Use specific version if provided, otherwise use channel tag
-    const versionSpec = specificVersion
-      ? specificVersion
-      : channel === 'stable'
-        ? 'stable'
-        : 'latest'
+    const versionSpec = specificVersion ?? channel
     const result = await execFileNoThrowWithCwd(
       'npm',
       ['install', `${MACRO.PACKAGE_URL}@${versionSpec}`],

@@ -67,6 +67,7 @@ type ResumeResult = {
   attributionSnapshots?: AttributionSnapshotMessage[]
   contextCollapseCommits?: ContextCollapseCommitEntry[]
   contextCollapseSnapshot?: ContextCollapseSnapshotEntry
+  fullPath?: string
 }
 
 /**
@@ -100,6 +101,14 @@ export function restoreSessionStateFromLog(
   result: ResumeResult,
   setAppState: (f: (prev: AppState) => AppState) => void,
 ): void {
+  // Durable task-state.json is the first source of truth on resume. Pass
+  // the resumed transcript path — getSessionId() may still be the old session.
+  /* eslint-disable @typescript-eslint/no-require-imports */
+  ;(
+    require('./task/taskState.js') as typeof import('./task/taskState.js')
+  ).applyResumedTaskState(setAppState, result.fullPath)
+  /* eslint-enable @typescript-eslint/no-require-imports */
+
   // Restore file history state
   if (result.fileHistorySnapshots && result.fileHistorySnapshots.length > 0) {
     fileHistoryRestoreStateFromLog(result.fileHistorySnapshots, newState => {
@@ -312,6 +321,7 @@ type ResumeLoadResult = {
   prNumber?: number
   prUrl?: string
   prRepository?: string
+  fullPath?: string
 }
 
 /**
@@ -531,6 +541,12 @@ export async function processResumedConversation(
     context.agentDefinitions,
   )
 
+  /* eslint-disable @typescript-eslint/no-require-imports */
+  const hydratedTasks = (
+    require('./task/taskState.js') as typeof import('./task/taskState.js')
+  ).loadHydratedTasks(opts.transcriptPath ?? result.fullPath)
+  /* eslint-enable @typescript-eslint/no-require-imports */
+
   return {
     messages: result.messages,
     fileHistorySnapshots: result.fileHistorySnapshots,
@@ -546,6 +562,7 @@ export async function processResumedConversation(
       ...(restoredAttribution && { attribution: restoredAttribution }),
       ...(standaloneAgentContext && { standaloneAgentContext }),
       agentDefinitions: refreshedAgentDefs,
+      tasks: hydratedTasks,
     },
   }
 }

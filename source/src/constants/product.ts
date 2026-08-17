@@ -1,4 +1,6 @@
-export const PRODUCT_URL = 'https://claude.com/claude-code'
+import { docsUrl } from '../product/identity.js'
+
+export const PRODUCT_URL = docsUrl
 
 // Claude Code Remote session URLs
 export const CLAUDE_AI_BASE_URL = 'https://claude.ai'
