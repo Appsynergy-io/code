@@ -464,7 +464,6 @@ async function performVersionUpdate(
     logForDebugging(`Version ${version} already installed, updating symlink`)
   }
 
-  // Create direct symlink from ~/.local/bin/claude to the version binary
   await removeDirectoryIfEmpty(executablePath)
   await updateSymlink(executablePath, installPath)
 
