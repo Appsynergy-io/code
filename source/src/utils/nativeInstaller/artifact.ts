@@ -1,5 +1,7 @@
+import { cliName } from '../../product/identity.js'
+
 export function getBinaryName(platform: string): string {
-  return platform.startsWith('win32') ? 'claude.exe' : 'claude'
+  return platform.startsWith('win32') ? `${cliName}.exe` : cliName
 }
 
 /** All index assets live on tag `release-index`. Nested tags like `release-index/2.1.88` make git refuse the parent tag `release-index`. */

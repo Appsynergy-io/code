@@ -19,6 +19,7 @@ import {
   isRunningFromLocalInstallation,
   localInstallationExists,
 } from './localInstaller.js'
+import { getBinaryName } from './nativeInstaller/artifact.js'
 import {
   detectApk,
   detectAsdf,
@@ -162,7 +163,7 @@ async function getInstallationPath(): Promise<string> {
     }
 
     try {
-      const path = await which('claude')
+      const path = await which(getBinaryName(process.platform))
       if (path) {
         return path
       }
@@ -172,8 +173,9 @@ async function getInstallationPath(): Promise<string> {
 
     // If we can't find it, check common locations
     try {
-      await getFsImplementation().stat(join(homedir(), '.local/bin/claude'))
-      return join(homedir(), '.local/bin/claude')
+      const nativeBin = join(homedir(), '.local/bin', getBinaryName(process.platform))
+      await getFsImplementation().stat(nativeBin)
+      return nativeBin
     } catch {
       // Not found
     }
@@ -286,7 +288,12 @@ async function detectMultipleInstallations(): Promise<
   // Check for native installation
 
   // Check common native installation paths
-  const nativeBinPath = join(homedir(), '.local', 'bin', 'claude')
+  const nativeBinPath = join(
+    homedir(),
+    '.local',
+    'bin',
+    getBinaryName(process.platform),
+  )
   try {
     await fs.stat(nativeBinPath)
     installations.push({ type: 'native', path: nativeBinPath })

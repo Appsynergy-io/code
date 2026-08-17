@@ -31,6 +31,7 @@ import { fileURLToPath } from 'node:url'
 import { createRequire } from 'node:module'
 
 type ProductConfig = {
+  cliName: string
   repository: string
   release: {
     binaryRepoUrl: string
@@ -110,7 +111,7 @@ function sha256File(filePath: string): Promise<string> {
 }
 
 function binaryNameFor(platform: string): string {
-  return platform.startsWith('win32') ? 'claude.exe' : 'claude'
+  return platform.startsWith('win32') ? `${product.cliName}.exe` : product.cliName
 }
 
 async function discoverArtifacts(artifactsDir: string): Promise<PlatformEntry[]> {
