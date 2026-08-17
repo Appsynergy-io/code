@@ -43,6 +43,19 @@ binary_name() {
   fi
 }
 
+# bun --compile --target names (win32 → windows).
+bun_compile_target() {
+  local os="$1" arch="$2"
+  case "$os" in
+    win32) printf 'bun-windows-%s' "$arch" ;;
+    linux|darwin) printf 'bun-%s-%s' "$os" "$arch" ;;
+    *)
+      echo "unsupported compile os: ${os}" >&2
+      return 1
+      ;;
+  esac
+}
+
 ensure_cli() {
   if [[ ! -f "$ROOT/cli.js" ]]; then
     bun scripts/build.ts
@@ -63,13 +76,19 @@ package_one() {
     return 1
   fi
   ensure_cli
-  local bin
+  local bin target
   bin="$(binary_name "$os")"
+  target="$(bun_compile_target "$os" "$arch")"
   local outdir="${DIST}/${platform}"
   mkdir -p "$outdir"
-  cp "$ROOT/cli.js" "${outdir}/${bin}"
+  bun build "$ROOT/cli.js" \
+    --compile \
+    --target="$target" \
+    --no-compile-autoload-dotenv \
+    --no-compile-autoload-bunfig \
+    --outfile "${outdir}/${bin}"
   chmod +x "${outdir}/${bin}"
-  echo "packaged ${platform}/${bin}"
+  echo "packaged ${platform}/${bin} (${target})"
 }
 
 write_checksums() {
