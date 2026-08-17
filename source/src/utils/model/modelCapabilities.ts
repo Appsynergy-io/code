@@ -1,3 +1,4 @@
+import { createHash } from 'crypto'
 import { readFileSync } from 'fs'
 import { mkdir, writeFile } from 'fs/promises'
 import isEqual from 'lodash-es/isEqual.js'
@@ -62,8 +63,18 @@ function getCacheDir(): string {
   return join(getClaudeConfigHomeDir(), 'cache')
 }
 
+function getCapabilityScopeKey(): string {
+  const provider = getAPIProvider()
+  const baseUrl = process.env.ANTHROPIC_BASE_URL ?? ''
+  return `${provider}:${baseUrl}`
+}
+
 function getCachePath(): string {
-  return join(getCacheDir(), 'model-capabilities.json')
+  const digest = createHash('sha256')
+    .update(getCapabilityScopeKey())
+    .digest('hex')
+    .slice(0, 16)
+  return join(getCacheDir(), `model-capabilities-${digest}.json`)
 }
 
 /** Refresh hits any first-party-shaped endpoint, including local proxies. */
@@ -95,8 +106,8 @@ const loadCache = memoize(
   path => path,
 )
 
-// Last successful provider list — wins over a stale disk cache for this process.
-let runtimeCapabilities: ModelCapability[] | null = null
+// Last successful list per provider+base URL — never reuse another endpoint.
+const runtimeCapabilities = new Map<string, ModelCapability[]>()
 
 function findCapability(
   models: ModelCapability[],
@@ -109,9 +120,11 @@ function findCapability(
 }
 
 export function getModelCapability(model: string): ModelCapability | undefined {
-  if (runtimeCapabilities && runtimeCapabilities.length > 0) {
-    const fromRuntime = findCapability(runtimeCapabilities, model)
-    if (fromRuntime) return fromRuntime
+  const scope = getCapabilityScopeKey()
+  const fromRuntime = runtimeCapabilities.get(scope)
+  if (fromRuntime && fromRuntime.length > 0) {
+    const found = findCapability(fromRuntime, model)
+    if (found) return found
   }
   const cached = loadCache(getCachePath())
   if (!cached || cached.length === 0) return undefined
@@ -148,7 +161,7 @@ export async function refreshModelCapabilities(): Promise<void> {
     if (parsed.length === 0) return
 
     const models = sortForMatching(parsed)
-    runtimeCapabilities = models
+    runtimeCapabilities.set(getCapabilityScopeKey(), models)
 
     const path = getCachePath()
     if (isEqual(loadCache(path), models)) {

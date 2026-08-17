@@ -22,6 +22,7 @@ import type { ToolUseContext } from '../../Tool.js'
 import type { LocalCommandCall } from '../../types/command.js'
 import type { Message } from '../../types/message.js'
 import { hasExactErrorMessage } from '../../utils/errors.js'
+import { persistTaskStateFromAppState } from '../../utils/task/taskState.js'
 import { executePreCompactHooks } from '../../utils/hooks.js'
 import { logError } from '../../utils/log.js'
 import { getMessagesAfterCompactBoundary } from '../../utils/messages.js'
@@ -71,6 +72,7 @@ export const call: LocalCommandCall = async (args, context) => {
           )
         }
         markPostCompaction()
+        await persistTaskStateFromAppState(context.getAppState().tasks)
         // Suppress warning immediately after successful compaction
         suppressCompactWarning()
 

@@ -7,7 +7,7 @@ import type { Message } from '../../types/message.js'
 import { getGlobalConfig } from '../../utils/config.js'
 import {
   getContextWindowForModel,
-  MODEL_CONTEXT_WINDOW_DEFAULT,
+  scaleTokensForContextWindow,
 } from '../../utils/context.js'
 import { logForDebugging } from '../../utils/debug.js'
 import { isEnvTruthy } from '../../utils/envUtils.js'
@@ -25,6 +25,7 @@ import {
   ERROR_MESSAGE_USER_ABORT,
   type RecompactionInfo,
 } from './compact.js'
+import { persistTaskStateFromAppState } from '../../utils/task/taskState.js'
 import { runPostCompactCleanup } from './postCompactCleanup.js'
 import { trySessionMemoryCompaction } from './sessionMemoryCompact.js'
 
@@ -32,9 +33,7 @@ import { trySessionMemoryCompaction } from './sessionMemoryCompact.js'
 // Based on p99.99 of compact summary output being 17,387 tokens.
 const MAX_OUTPUT_TOKENS_FOR_SUMMARY = 20_000
 
-// 13k of 20k is 65% — too large. Scale from the 200k reference; keep a floor
-// so tiny windows still compact before overflow.
-const AUTOCOMPACT_BUFFER_FLOOR = 512
+// 13k of 20k is 65% — too large. Scale from the 200k reference.
 
 function getAutoCompactContextWindow(model: string): number {
   let contextWindow = getContextWindowForModel(model, getSdkBetas())
@@ -50,22 +49,12 @@ function getAutoCompactContextWindow(model: string): number {
   return contextWindow
 }
 
-function scaleBufferFromWindow(
-  referenceTokens: number,
-  window: number,
-): number {
-  return Math.max(
-    AUTOCOMPACT_BUFFER_FLOOR,
-    Math.round((referenceTokens / MODEL_CONTEXT_WINDOW_DEFAULT) * window),
-  )
-}
-
 // Returns the context window size minus the max output tokens for the model
 export function getEffectiveContextWindowSize(model: string): number {
   const contextWindow = getAutoCompactContextWindow(model)
   const reservedCap = Math.min(
     MAX_OUTPUT_TOKENS_FOR_SUMMARY,
-    scaleBufferFromWindow(MAX_OUTPUT_TOKENS_FOR_SUMMARY, contextWindow),
+    scaleTokensForContextWindow(MAX_OUTPUT_TOKENS_FOR_SUMMARY, contextWindow),
   )
   const reservedTokensForSummary = Math.min(
     getMaxOutputTokensForModel(model),
@@ -93,28 +82,28 @@ export const ERROR_THRESHOLD_BUFFER_TOKENS = 20_000
 export const MANUAL_COMPACT_BUFFER_TOKENS = 3_000
 
 export function getAutoCompactBufferTokens(model: string): number {
-  return scaleBufferFromWindow(
+  return scaleTokensForContextWindow(
     AUTOCOMPACT_BUFFER_TOKENS,
     getAutoCompactContextWindow(model),
   )
 }
 
 export function getWarningThresholdBufferTokens(model: string): number {
-  return scaleBufferFromWindow(
+  return scaleTokensForContextWindow(
     WARNING_THRESHOLD_BUFFER_TOKENS,
     getAutoCompactContextWindow(model),
   )
 }
 
 export function getErrorThresholdBufferTokens(model: string): number {
-  return scaleBufferFromWindow(
+  return scaleTokensForContextWindow(
     ERROR_THRESHOLD_BUFFER_TOKENS,
     getAutoCompactContextWindow(model),
   )
 }
 
 export function getManualCompactBufferTokens(model: string): number {
-  return scaleBufferFromWindow(
+  return scaleTokensForContextWindow(
     MANUAL_COMPACT_BUFFER_TOKENS,
     getAutoCompactContextWindow(model),
   )
@@ -359,6 +348,7 @@ export async function autoCompactIfNeeded(
       notifyCompaction(querySource ?? 'compact', toolUseContext.agentId)
     }
     markPostCompaction()
+    await persistTaskStateFromAppState(toolUseContext.getAppState().tasks)
     return {
       wasCompacted: true,
       compactionResult: sessionMemoryResult,
