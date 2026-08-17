@@ -16,6 +16,8 @@
  *   bun release/publish-index.ts --version 2.1.88 --artifacts ./dist
  *   bun release/publish-index.ts --version 2.1.88 --channel nightly
  *
+ * Default channel is `latest`. Pass --channel / --channels to move stable or nightly.
+ *
  * Auth: GITHUB_TOKEN or GH_TOKEN.
  */
 import { createHash } from 'node:crypto'
@@ -82,21 +84,16 @@ function token(): string {
 
 function parseBinaryRepo(
   binaryRepoUrl: string,
-  repository: string,
 ): { owner: string; repo: string; indexTag: string } {
   const match = binaryRepoUrl.match(
     /^https:\/\/github\.com\/([^/]+)\/([^/]+)\/releases\/download\/([^/]+)\/?$/,
   )
-  if (match) {
-    return { owner: match[1]!, repo: match[2]!, indexTag: match[3]! }
-  }
-  const [owner, repo] = repository.split('/')
-  if (!owner || !repo) {
+  if (!match) {
     throw new Error(
       `binaryRepoUrl is not a GitHub Releases download URL: ${binaryRepoUrl}`,
     )
   }
-  return { owner, repo, indexTag: 'release-index' }
+  return { owner: match[1]!, repo: match[2]!, indexTag: match[3]! }
 }
 
 function sha256File(filePath: string): Promise<string> {
@@ -289,15 +286,20 @@ async function main(): Promise<void> {
       : typeof args.channels === 'string'
         ? args.channels
         : undefined
-  const channels = (
-    channelArg
-      ? channelArg.split(',').map(c => c.trim())
-      : product.release.channels
-  ) as Array<'latest' | 'stable' | 'nightly'>
+  const requested = channelArg
+    ? channelArg.split(',').map(c => c.trim()).filter(Boolean)
+    : ['latest']
+  const allowed = new Set(product.release.channels)
+  const invalid = requested.filter(c => !allowed.has(c as (typeof product.release.channels)[number]))
+  if (invalid.length > 0) {
+    throw new Error(
+      `Unknown channel(s): ${invalid.join(', ')}. Use ${product.release.channels.join(', ')}`,
+    )
+  }
+  const channels = requested as Array<(typeof product.release.channels)[number]>
 
   const { owner, repo, indexTag } = parseBinaryRepo(
     product.release.binaryRepoUrl,
-    product.repository,
   )
   const base = product.release.binaryRepoUrl.replace(/\/$/, '')
 
