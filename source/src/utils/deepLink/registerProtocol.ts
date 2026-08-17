@@ -27,14 +27,20 @@ import { getErrnoCode } from '../errors.js'
 import { execFileNoThrow } from '../execFileNoThrow.js'
 import { getInitialSettings } from '../settings/settings.js'
 import { which } from '../which.js'
+import {
+  cliName,
+  displayName,
+  urlHandlerAppName,
+  urlHandlerBundleId,
+} from '../../product/identity.js'
 import { getBinaryName } from '../nativeInstaller/artifact.js'
 import { getUserBinDir, getXDGDataHome } from '../xdg.js'
 import { DEEP_LINK_PROTOCOL } from './parseDeepLink.js'
 
-export const MACOS_BUNDLE_ID = 'com.anthropic.claude-code-url-handler'
-const APP_NAME = 'Claude Code URL Handler'
-const DESKTOP_FILE_NAME = 'claude-code-url-handler.desktop'
-const MACOS_APP_NAME = 'Claude Code URL Handler.app'
+export const MACOS_BUNDLE_ID = urlHandlerBundleId
+const APP_NAME = urlHandlerAppName
+const DESKTOP_FILE_NAME = `${cliName}-url-handler.desktop`
+const MACOS_APP_NAME = `${urlHandlerAppName}.app`
 
 // Shared between register* (writes these paths/values) and
 // isProtocolHandlerCurrent (reads them back). Keep the writer and reader
@@ -44,7 +50,7 @@ const MACOS_SYMLINK_PATH = path.join(
   MACOS_APP_DIR,
   'Contents',
   'MacOS',
-  'claude',
+  cliName,
 )
 function linuxDesktopPath(): string {
   return path.join(getXDGDataHome(), 'applications', DESKTOP_FILE_NAME)
@@ -98,7 +104,7 @@ async function registerMacos(claudePath: string): Promise<void> {
   <key>CFBundleName</key>
   <string>${APP_NAME}</string>
   <key>CFBundleExecutable</key>
-  <string>claude</string>
+  <string>${cliName}</string>
   <key>CFBundleVersion</key>
   <string>1.0</string>
   <key>CFBundlePackageType</key>
@@ -109,7 +115,7 @@ async function registerMacos(claudePath: string): Promise<void> {
   <array>
     <dict>
       <key>CFBundleURLName</key>
-      <string>Claude Code Deep Link</string>
+      <string>${displayName} Deep Link</string>
       <key>CFBundleURLSchemes</key>
       <array>
         <string>${DEEP_LINK_PROTOCOL}</string>
@@ -147,7 +153,7 @@ async function registerLinux(claudePath: string): Promise<void> {
 
   const desktopEntry = `[Desktop Entry]
 Name=${APP_NAME}
-Comment=Handle ${DEEP_LINK_PROTOCOL}:// deep links for Claude Code
+Comment=Handle ${DEEP_LINK_PROTOCOL}:// deep links for ${displayName}
 ${linuxExecLine(claudePath)}
 Type=Application
 NoDisplay=true

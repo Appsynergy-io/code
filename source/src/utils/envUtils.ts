@@ -1,16 +1,18 @@
 import memoize from 'lodash-es/memoize.js'
 import { homedir } from 'os'
 import { join } from 'path'
+import { configDirName } from '../product/identity.js'
 
-// Memoized: 150+ callers, many on hot paths. Keyed off CLAUDE_CONFIG_DIR so
+// Memoized: 150+ callers, many on hot paths. Keyed off CODE_CONFIG_DIR so
 // tests that change the env var get a fresh value without explicit cache.clear.
+// Do not read CLAUDE_CONFIG_DIR — that is official Claude Code's env.
 export const getClaudeConfigHomeDir = memoize(
   (): string => {
     return (
-      process.env.CLAUDE_CONFIG_DIR ?? join(homedir(), '.claude')
+      process.env.CODE_CONFIG_DIR ?? join(homedir(), configDirName)
     ).normalize('NFC')
   },
-  () => process.env.CLAUDE_CONFIG_DIR,
+  () => process.env.CODE_CONFIG_DIR,
 )
 
 export function getTeamsDir(): string {

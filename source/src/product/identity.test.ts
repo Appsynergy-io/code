@@ -5,16 +5,23 @@ import product from '../../../config/product.json'
 import {
   binaryRepoUrl,
   buildMacro,
+  configDirName,
   contextTokensEnv,
   displayName,
   getContextTokensEnvValue,
   getContextWindowOverride,
   getProjectInstructionFileNames,
   getProjectInstructionPaths,
+  globalConfigFileName,
   instructionFileName,
   instructionLocalFileName,
   isInstructionFileName,
   legacyInstructionFileNames,
+  projectSettingsDir,
+  protocolScheme,
+  urlHandlerAppName,
+  urlHandlerBundleId,
+  xdgDirName,
 } from './identity.ts'
 
 const savedEnv = {
@@ -73,6 +80,23 @@ test('context window env name and CODE_ alias come from product.json', () => {
 
   process.env.CODE_MAX_CONTEXT_TOKENS = '64000'
   expect(getContextWindowOverride()).toBe(64000)
+})
+
+test('config home and global file names come from product.json', () => {
+  expect(configDirName).toBe(product.configDirName)
+  expect(configDirName).toBe('.code')
+  expect(projectSettingsDir).toBe(product.projectSettingsDir)
+  expect(projectSettingsDir).toBe('.code')
+  expect(xdgDirName).toBe(product.xdgDirName)
+  expect(xdgDirName).toBe('code')
+  expect(globalConfigFileName).toBe(product.globalConfigFileName)
+  expect(globalConfigFileName).toBe('.code.json')
+  expect(protocolScheme).toBe(product.protocolScheme)
+  expect(protocolScheme).toBe('code')
+  expect(urlHandlerBundleId).toBe(product.urlHandlerBundleId)
+  expect(urlHandlerBundleId).toBe('com.appsynergy.code-url-handler')
+  expect(urlHandlerAppName).toBe(product.urlHandlerAppName)
+  expect(urlHandlerAppName).toBe('Code URL Handler')
 })
 
 test('binaryRepoUrl is the product-configured GitHub release-index', () => {

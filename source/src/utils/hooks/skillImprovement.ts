@@ -11,6 +11,7 @@ import { getEmptyToolPermissionContext } from '../../Tool.js'
 import type { Message } from '../../types/message.js'
 import { createAbortController } from '../abortController.js'
 import { count } from '../array.js'
+import { projectSettingsDir } from '../../product/identity.js'
 import { getCwd } from '../cwd.js'
 import { toError } from '../errors.js'
 import { logError } from '../log.js'
@@ -195,7 +196,13 @@ export async function applySkillImprovement(
   const fs = await import('fs/promises')
 
   // Skills live at .claude/skills/<name>/SKILL.md relative to CWD
-  const filePath = join(getCwd(), '.claude', 'skills', skillName, 'SKILL.md')
+  const filePath = join(
+    getCwd(),
+    projectSettingsDir,
+    'skills',
+    skillName,
+    'SKILL.md',
+  )
 
   let currentContent: string
   try {

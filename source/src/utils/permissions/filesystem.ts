@@ -12,6 +12,12 @@ import {
   GLOBAL_CLAUDE_FOLDER_PERMISSION_PATTERN,
 } from 'src/tools/FileEditTool/constants.js'
 import type { z } from 'zod/v4'
+import {
+  cliName,
+  configDirName,
+  globalConfigFileName,
+  projectSettingsDir,
+} from '../../product/identity.js'
 import { getOriginalCwd, getSessionId } from '../../bootstrap/state.js'
 import { checkStatsigFeatureGate_CACHED_MAY_BE_STALE } from '../../services/analytics/growthbook.js'
 import type { AnyObject, Tool, ToolPermissionContext } from '../../Tool.js'
@@ -64,7 +70,7 @@ export const DANGEROUS_FILES = [
   '.profile',
   '.ripgreprc',
   '.mcp.json',
-  '.claude.json',
+  globalConfigFileName,
 ] as const
 
 /**
@@ -75,7 +81,7 @@ export const DANGEROUS_DIRECTORIES = [
   '.git',
   '.vscode',
   '.idea',
-  '.claude',
+  projectSettingsDir,
 ] as const
 
 /**
@@ -106,12 +112,12 @@ export function getClaudeSkillScope(
 
   const bases = [
     {
-      dir: expandPath(join(getOriginalCwd(), '.claude', 'skills')),
-      prefix: '/.claude/skills/',
+      dir: expandPath(join(getOriginalCwd(), projectSettingsDir, 'skills')),
+      prefix: `/${projectSettingsDir}/skills/`,
     },
     {
-      dir: expandPath(join(homedir(), '.claude', 'skills')),
-      prefix: '~/.claude/skills/',
+      dir: expandPath(join(getClaudeConfigHomeDir(), 'skills')),
+      prefix: `~/${configDirName}/skills/`,
     },
   ]
 
@@ -230,9 +236,9 @@ function isClaudeConfigFilePath(filePath: string): boolean {
   // Check if file is within .claude/commands or .claude/agents directories
   // using proper path segment validation (not string matching with includes())
   // pathInWorkingPath now handles case-insensitive comparison to prevent bypasses
-  const commandsDir = join(getOriginalCwd(), '.claude', 'commands')
-  const agentsDir = join(getOriginalCwd(), '.claude', 'agents')
-  const skillsDir = join(getOriginalCwd(), '.claude', 'skills')
+  const commandsDir = join(getOriginalCwd(), projectSettingsDir, 'commands')
+  const agentsDir = join(getOriginalCwd(), projectSettingsDir, 'agents')
+  const skillsDir = join(getOriginalCwd(), projectSettingsDir, 'skills')
 
   return (
     pathInWorkingPath(filePath, commandsDir) ||
@@ -306,12 +312,12 @@ export function isScratchpadEnabled(): boolean {
  */
 export function getClaudeTempDirName(): string {
   if (getPlatform() === 'windows') {
-    return 'claude'
+    return cliName
   }
   // Use UID to create per-user directories, preventing permission conflicts
   // when multiple users share the same /tmp directory
   const uid = process.getuid?.() ?? 0
-  return `claude-${uid}`
+  return `${cliName}-${uid}`
 }
 
 /**
@@ -457,7 +463,7 @@ function isDangerousFilePathToAutoEdit(path: string): boolean {
       // git worktrees), not a user-created dangerous directory. Skip the .claude
       // segment when it's followed by 'worktrees'. Any nested .claude directories
       // within the worktree (not followed by 'worktrees') are still blocked.
-      if (dir === '.claude') {
+      if (dir === projectSettingsDir) {
         const nextSegment = pathSegments[i + 1]
         if (
           nextSegment &&
@@ -1589,7 +1595,9 @@ export function checkEditableInternalPath(
   // .claude/ only (not ~/.claude/) since launch.json is per-project.
   if (
     normalizeCaseForComparison(normalizedPath) ===
-    normalizeCaseForComparison(join(getOriginalCwd(), '.claude', 'launch.json'))
+    normalizeCaseForComparison(
+      join(getOriginalCwd(), projectSettingsDir, 'launch.json'),
+    )
   ) {
     return {
       behavior: 'allow',

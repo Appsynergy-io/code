@@ -28,12 +28,15 @@ test('temp-dir load reads AGENTS.md hierarchy and skips CLAUDE.md', async () => 
   const root = await mkdtemp(join(tmpdir(), 'agents-md-'))
   const nested = join(root, 'pkg', 'app')
   await mkdir(nested, { recursive: true })
-  await mkdir(join(nested, '.claude'), { recursive: true })
+  await mkdir(join(nested, product.projectSettingsDir), { recursive: true })
 
   await writeFile(join(root, 'AGENTS.md'), 'root agents')
   await writeFile(join(root, 'CLAUDE.md'), 'should not load')
   await writeFile(join(nested, 'AGENTS.md'), 'nested agents')
-  await writeFile(join(nested, '.claude', 'AGENTS.md'), 'settings agents')
+  await writeFile(
+    join(nested, product.projectSettingsDir, 'AGENTS.md'),
+    'settings agents',
+  )
   await writeFile(join(nested, 'AGENTS.local.md'), 'local agents')
   await writeFile(join(nested, 'CLAUDE.md'), 'nested claude should not load')
 
