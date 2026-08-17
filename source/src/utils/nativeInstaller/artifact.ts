@@ -2,16 +2,23 @@ export function getBinaryName(platform: string): string {
   return platform.startsWith('win32') ? 'claude.exe' : 'claude'
 }
 
-/** Flattened asset name. GitHub forbids `/` in release asset names and 500s on tags with two slashes. */
-export function binaryAssetName(platform: string): string {
-  return `${platform}-${getBinaryName(platform)}`
+/** All index assets live on tag `release-index`. Nested tags like `release-index/2.1.88` make git refuse the parent tag `release-index`. */
+export function binaryAssetName(version: string, platform: string): string {
+  return `${version}-${platform}-${getBinaryName(platform)}`
 }
 
-/** `{base}/{version}/{platform}-{claude[.exe]}` — GitHub tag `release-index/{version}`, asset `linux-x64-claude`. */
+export function manifestAssetName(version: string): string {
+  return `${version}-manifest.json`
+}
+
+export function manifestUrl(baseUrl: string, version: string): string {
+  return `${baseUrl}/${manifestAssetName(version)}`
+}
+
 export function binaryArtifactUrl(
   baseUrl: string,
   version: string,
   platform: string,
 ): string {
-  return `${baseUrl}/${version}/${binaryAssetName(platform)}`
+  return `${baseUrl}/${binaryAssetName(version, platform)}`
 }

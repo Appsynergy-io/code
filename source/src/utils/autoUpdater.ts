@@ -9,6 +9,7 @@ import {
   logEvent,
 } from 'src/services/analytics/index.js'
 import { binaryRepoUrl, releaseMinVersion } from '../product/identity.js'
+import { manifestUrl } from './nativeInstaller/artifact.js'
 import { type ReleaseChannel, saveGlobalConfig } from './config.js'
 import { logForDebugging } from './debug.js'
 import { env } from './env.js'
@@ -105,7 +106,7 @@ async function resolveMinVersion(): Promise<string | undefined> {
     if (!latest) {
       return undefined
     }
-    const response = await axios.get(`${binaryRepoUrl}/${latest}/manifest.json`, {
+    const response = await axios.get(manifestUrl(binaryRepoUrl, latest), {
       timeout: 5000,
       responseType: 'json',
     })

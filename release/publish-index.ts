@@ -7,10 +7,13 @@
  *   {base}/{version}/checksums.txt
  *   {base}/{version}/{platform}/{bin}
  *
- * GitHub Releases map that path onto tags:
- *   release-index                       assets: latest | stable | nightly
- *   release-index/{version}             assets: manifest.json, checksums.txt,
- *                                     linux-x64-claude, win32-x64-claude.exe, …
+ * GitHub cannot host both tag `release-index` and `release-index/2.1.88`
+ * (a ref cannot be both a file and a directory). Everything lives on
+ * tag `release-index` as flattened assets:
+ *   latest | stable | nightly
+ *   {version}-manifest.json
+ *   {version}-checksums.txt
+ *   {version}-{platform}-{bin}
  *
  * Usage:
  *   bun release/publish-index.ts --version 2.1.88 --artifacts ./dist
@@ -218,6 +221,7 @@ async function ensureRelease(
     `${API}/repos/${owner}/${repo}/releases`,
     JSON.stringify({
       tag_name: tag,
+      target_commitish: 'main',
       name,
       body: 'Binary-repo index (channel pointers and version artifacts).',
       draft: false,
@@ -311,46 +315,56 @@ async function main(): Promise<void> {
     const platforms = await discoverArtifacts(artifactsDir)
     const manifest = buildManifest(version, platforms, minVersion)
     const checksums = buildChecksums(platforms)
-    const versionTag = `${indexTag}/${version}`
-    const versionRelease = await ensureRelease(
+    const indexRelease = await ensureRelease(
       owner,
       repo,
-      versionTag,
-      version,
+      indexTag,
+      'Release index',
     )
     await uploadAsset(
       owner,
       repo,
-      versionRelease,
-      'manifest.json',
+      indexRelease,
+      `${version}-manifest.json`,
       Buffer.from(JSON.stringify(manifest, null, 2) + '\n'),
       'application/json',
     )
     await uploadAsset(
       owner,
       repo,
-      versionRelease,
-      'checksums.txt',
+      indexRelease,
+      `${version}-checksums.txt`,
       Buffer.from(checksums),
       'text/plain',
     )
-    process.stdout.write(`  ${base}/${version}/manifest.json\n`)
-    process.stdout.write(`  ${base}/${version}/checksums.txt\n`)
+    process.stdout.write(`  ${base}/${version}-manifest.json\n`)
+    process.stdout.write(`  ${base}/${version}-checksums.txt\n`)
 
-    // One tag per version. Platform files are flattened assets — GitHub 500s
-    // on tags like release-index/{version}/{platform}.
     for (const entry of platforms) {
-      const assetName = `${entry.platform}-${entry.binaryName}`
+      const assetName = `${version}-${entry.platform}-${entry.binaryName}`
       await uploadAsset(
         owner,
         repo,
-        versionRelease,
+        indexRelease,
         assetName,
         await readFile(entry.filePath),
         'application/octet-stream',
       )
-      process.stdout.write(`  ${base}/${version}/${assetName}\n`)
+      process.stdout.write(`  ${base}/${assetName}\n`)
     }
+
+    for (const channel of channels) {
+      await uploadAsset(
+        owner,
+        repo,
+        indexRelease,
+        channel,
+        Buffer.from(`${version}\n`),
+        'text/plain',
+      )
+      process.stdout.write(`  ${base}/${channel} → ${version}\n`)
+    }
+    return
   }
 
   const indexRelease = await ensureRelease(

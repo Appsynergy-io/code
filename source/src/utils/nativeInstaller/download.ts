@@ -19,7 +19,7 @@ import { toError } from '../errors.js'
 import { getFsImplementation } from '../fsOperations.js'
 import { logError } from '../log.js'
 import { sleep } from '../sleep.js'
-import { binaryArtifactUrl, getBinaryName } from './artifact.js'
+import { binaryArtifactUrl, getBinaryName, manifestUrl } from './artifact.js'
 import { getPlatform } from './installer.js'
 
 const RELEASE_CHANNELS: readonly ReleaseChannel[] = [
@@ -232,9 +232,7 @@ export async function downloadVersionFromBinaryRepo(
   // Fetch manifest to get checksum
   let manifest
   try {
-    const manifestResponse = await axios.get(
-      `${baseUrl}/${version}/manifest.json`,
-      {
+    const manifestResponse = await axios.get(manifestUrl(baseUrl, version), {
         timeout: 10000,
         responseType: 'json',
         ...authConfig,
@@ -256,7 +254,7 @@ export async function downloadVersionFromBinaryRepo(
     })
     logError(
       new Error(
-        `Failed to fetch manifest from ${baseUrl}/${version}/manifest.json: ${errorMessage}`,
+        `Failed to fetch manifest from ${manifestUrl(baseUrl, version)}: ${errorMessage}`,
       ),
     )
     throw error
