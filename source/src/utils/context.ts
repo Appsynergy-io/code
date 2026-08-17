@@ -1,9 +1,13 @@
 // biome-ignore-all assist/source/organizeImports: ANT-ONLY import markers must not be reordered
 import { CONTEXT_1M_BETA_HEADER } from '../constants/betas.js'
+import { getContextTokensEnvValue } from '../product/identity.js'
 import { getGlobalConfig } from './config.js'
 import { isEnvTruthy } from './envUtils.js'
 import { getCanonicalName } from './model/model.js'
-import { getModelCapability } from './model/modelCapabilities.js'
+import {
+  getAdvertisedMaxInputTokens,
+  getModelCapability,
+} from './model/modelCapabilities.js'
 
 // Model context window size (200k tokens for all models right now)
 export const MODEL_CONTEXT_WINDOW_DEFAULT = 200_000
@@ -52,15 +56,12 @@ export function getContextWindowForModel(
   model: string,
   betas?: string[],
 ): number {
-  // Allow override via environment variable (ant-only)
-  // This takes precedence over all other context window resolution, including 1M detection,
-  // so users can cap the effective context window for local decisions (auto-compact, etc.)
-  // while still using a 1M-capable endpoint.
-  if (
-    process.env.USER_TYPE === 'ant' &&
-    process.env.CLAUDE_CODE_MAX_CONTEXT_TOKENS
-  ) {
-    const override = parseInt(process.env.CLAUDE_CODE_MAX_CONTEXT_TOKENS, 10)
+  // Env override (CLAUDE_CODE_MAX_CONTEXT_TOKENS / CODE_MAX_CONTEXT_TOKENS)
+  // takes precedence over all other resolution, including 1M detection, so
+  // local models can set window size and users can cap a 1M-capable endpoint.
+  const overrideRaw = getContextTokensEnvValue()
+  if (overrideRaw) {
+    const override = parseInt(overrideRaw, 10)
     if (!isNaN(override) && override > 0) {
       return override
     }
@@ -71,15 +72,13 @@ export function getContextWindowForModel(
     return 1_000_000
   }
 
-  const cap = getModelCapability(model)
-  if (cap?.max_input_tokens && cap.max_input_tokens >= 100_000) {
-    if (
-      cap.max_input_tokens > MODEL_CONTEXT_WINDOW_DEFAULT &&
-      is1mContextDisabled()
-    ) {
+  const advertised = getAdvertisedMaxInputTokens(model)
+  if (advertised !== undefined && advertised > 0) {
+    // HIPAA / disable-1M: clamp only true 1M+ ads, not every window > 200k.
+    if (advertised >= 1_000_000 && is1mContextDisabled()) {
       return MODEL_CONTEXT_WINDOW_DEFAULT
     }
-    return cap.max_input_tokens
+    return advertised
   }
 
   if (betas?.includes(CONTEXT_1M_BETA_HEADER) && modelSupports1M(model)) {

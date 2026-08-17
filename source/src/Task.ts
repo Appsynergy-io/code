@@ -28,6 +28,35 @@ export function isTerminalTaskStatus(status: TaskStatus): boolean {
   return status === 'completed' || status === 'failed' || status === 'killed'
 }
 
+/**
+ * Durable task snapshot persisted beside the session transcript
+ * (`{sessionId}.task-state.json`). Compaction updates it without an LLM call.
+ */
+export type DurableTaskRecord = {
+  id: string
+  parent?: string
+  status: TaskStatus
+  assignee?: string
+  deps?: string[]
+  inputs?: unknown
+  outputs?: unknown
+  validation?: unknown
+  errors?: unknown[]
+  retries?: number
+  checkpoints?: unknown[]
+  pending?: unknown
+  completion?: unknown
+  // Identity fields from TaskStateBase — needed to rehydrate on resume.
+  type?: TaskType
+  description?: string
+}
+
+export type DurableTaskStateFile = {
+  version: 1
+  updatedAt: number
+  tasks: DurableTaskRecord[]
+}
+
 export type TaskHandle = {
   taskId: string
   cleanup?: () => void

@@ -82,6 +82,7 @@ import { jsonStringify } from '../../utils/slowOperations.js'
 /* eslint-enable @typescript-eslint/no-require-imports */
 import { asSystemPrompt } from '../../utils/systemPromptType.js'
 import { getTaskOutputPath } from '../../utils/task/diskOutput.js'
+import { persistTaskStateFromAppState } from '../../utils/task/taskState.js'
 import {
   getTokenUsage,
   tokenCountFromLastAPIResponse,
@@ -710,6 +711,10 @@ export async function compactConversation(
     // instead of the user-set session name.
     reAppendSessionMetadata()
 
+    // Deterministic sidecar update — no extra LLM call. Resume reads this
+    // first so task graph state survives the summarized transcript.
+    await persistTaskStateFromAppState(context.getAppState().tasks)
+
     // Write a reduced transcript segment for the pre-compaction messages
     // (assistant mode only). Fire-and-forget — errors are logged internally.
     if (feature('KAIROS')) {
@@ -1055,6 +1060,8 @@ export async function partialCompactConversation(
     // Re-append session metadata (custom title, tag) so it stays within
     // the 16KB tail window that readLiteMetadata reads for --resume display.
     reAppendSessionMetadata()
+
+    await persistTaskStateFromAppState(context.getAppState().tasks)
 
     if (feature('KAIROS')) {
       void sessionTranscriptModule?.writeSessionTranscriptSegment(

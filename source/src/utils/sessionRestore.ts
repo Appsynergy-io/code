@@ -100,6 +100,14 @@ export function restoreSessionStateFromLog(
   result: ResumeResult,
   setAppState: (f: (prev: AppState) => AppState) => void,
 ): void {
+  // Durable task-state.json is the first source of truth on resume — read
+  // before reconstructing anything from the transcript.
+  /* eslint-disable @typescript-eslint/no-require-imports */
+  ;(
+    require('./task/taskState.js') as typeof import('./task/taskState.js')
+  ).readTaskStateFileSync()
+  /* eslint-enable @typescript-eslint/no-require-imports */
+
   // Restore file history state
   if (result.fileHistorySnapshots && result.fileHistorySnapshots.length > 0) {
     fileHistoryRestoreStateFromLog(result.fileHistorySnapshots, newState => {
