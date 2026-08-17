@@ -41,24 +41,22 @@ ln -s "$(pwd)/cli.js" /usr/local/bin/code
 
 ## Rebuilding from source
 
-Rebuilding from the extracted source is **not feasible** because:
+```sh
+bun install --ignore-scripts
+bun scripts/build.ts          # writes cli.js
+bun cli.js --version          # 2.1.88 (Code)
+bash scripts/check.sh
+```
 
-- The code uses `import { feature } from 'bun:bundle'` (Bun bundler compile-time API)
-- The original `package.json` with ~hundreds of build/dev dependencies is not published
-- Build configuration (tsconfig, bundler config) is not included in the source map
-- 2,850 bundled `node_modules` dependencies are only present as source map entries
-
-The extracted `source/` tree (1,906 files, 35 MB) is useful for **reading and studying** the internals, not for rebuilding.
+`scripts/extract-deps.ts --write` rebuilds `package.json` dependencies from the `source/` import graph. `feature()` is shimmed off for the external build.
 
 ## Directory layout
 
 ```
-cli.js           # 13 MB self-contained Node.js bundle (the actual executable)
-cli.js.map       # 57 MB source map (contains all original sources)
-source/          # extracted source tree:
-  src/           #   1,902 TypeScript/TSX application files
-  vendor/        #   4 native module source stubs
-package.json     # published package manifest (no build deps)
+cli.js           # bun-built CLI (MACRO from config/product.json)
+source/          # extracted source tree
+scripts/build.ts # bun build entry
+package.json     # reconstructed dependencies
 README.md        # this file
 ```
 

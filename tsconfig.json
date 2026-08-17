@@ -1,0 +1,29 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": ["ES2022"],
+    "strict": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "jsx": "react-jsx",
+    "types": ["bun"],
+    "paths": {
+      "bun:bundle": ["./source/src/vendor/bun-bundle.ts"],
+      "src/*": ["./source/src/*"]
+    }
+  },
+  "include": [
+    "scripts/**/*.ts",
+    "source/src/vendor/bun-bundle.ts",
+    "source/src/product/identity.ts",
+    "source/src/product/macros.d.ts",
+    "config/product.json",
+    "package.json"
+  ]
+}
