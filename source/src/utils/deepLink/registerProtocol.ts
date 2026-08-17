@@ -27,6 +27,7 @@ import { getErrnoCode } from '../errors.js'
 import { execFileNoThrow } from '../execFileNoThrow.js'
 import { getInitialSettings } from '../settings/settings.js'
 import { which } from '../which.js'
+import { getBinaryName } from '../nativeInstaller/artifact.js'
 import { getUserBinDir, getXDGDataHome } from '../xdg.js'
 import { DEEP_LINK_PROTOCOL } from './parseDeepLink.js'
 
@@ -234,12 +235,12 @@ export async function registerProtocolHandler(
 
 /**
  * Resolve the claude binary path for protocol registration. Prefers the
- * native installer's stable symlink (~/.local/bin/claude) which survives
+ * native installer's stable symlink (~/.local/bin/{cliName}) which survives
  * auto-updates; falls back to process.execPath when the symlink is absent
  * (dev builds, non-native installs).
  */
 async function resolveClaudePath(): Promise<string> {
-  const binaryName = process.platform === 'win32' ? 'claude.exe' : 'claude'
+  const binaryName = getBinaryName(process.platform)
   const stablePath = path.join(getUserBinDir(), binaryName)
   try {
     await fs.realpath(stablePath)

@@ -5,6 +5,7 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
 DIST="${DIST:-$ROOT/dist}"
+CLI_NAME="$(bun -e 'import product from "./config/product.json"; process.stdout.write(product.cliName)')"
 
 UNIT_TESTS=(
   scripts/extract-deps.test.ts
@@ -148,8 +149,8 @@ validate_one() {
   local os="$1" arch="$2"
   local platform="${os}-${arch}"
   local vendor="${arch}-${os}"
-  local bin=claude
-  [[ "$os" == win32 ]] && bin=claude.exe
+  local bin="${CLI_NAME}"
+  [[ "$os" == win32 ]] && bin="${CLI_NAME}.exe"
   local path="${DIST}/${platform}/${bin}"
   if [[ ! -f "$path" ]]; then
     echo "missing artifact ${path}" >&2

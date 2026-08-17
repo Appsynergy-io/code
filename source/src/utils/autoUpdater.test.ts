@@ -47,10 +47,10 @@ test('updater fixtures have no Anthropic GCS or npm host', () => {
 })
 
 test('artifact selection is per platform', () => {
-  expect(getBinaryName('win32-x64')).toBe('claude.exe')
-  expect(getBinaryName('win32-arm64')).toBe('claude.exe')
-  expect(getBinaryName('darwin-arm64')).toBe('claude')
-  expect(getBinaryName('linux-x64')).toBe('claude')
+  expect(getBinaryName('win32-x64')).toBe(`${product.cliName}.exe`)
+  expect(getBinaryName('win32-arm64')).toBe(`${product.cliName}.exe`)
+  expect(getBinaryName('darwin-arm64')).toBe(product.cliName)
+  expect(getBinaryName('linux-x64')).toBe(product.cliName)
 
   const pack = readFileSync(join(ROOT, 'build/package.sh'), 'utf8')
   for (const platform of PLATFORMS) {

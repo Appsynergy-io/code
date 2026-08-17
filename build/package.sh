@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
-# Emit dist/{os}-{arch}/claude[.exe] for the binary-repo contract.
+# Emit dist/{os}-{arch}/code[.exe] for the binary-repo contract.
 # Vendor natives are keyed {arch}-{os}; cells without them are not packaged.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
 DIST="${DIST:-$ROOT/dist}"
+CLI_NAME="$(bun -e 'import product from "./config/product.json"; process.stdout.write(product.cliName)')"
 
 # os-arch (artifact) → arch-os (vendor/)
 PLATFORMS=(
@@ -36,9 +37,9 @@ has_vendor() {
 binary_name() {
   local os="$1"
   if [[ "$os" == win32 ]]; then
-    echo claude.exe
+    echo "${CLI_NAME}.exe"
   else
-    echo claude
+    echo "${CLI_NAME}"
   fi
 }
 
